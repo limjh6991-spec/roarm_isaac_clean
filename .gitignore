@@ -1,0 +1,63 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Isaac Sim
+*.log
+*.dmp
+crash_*.txt
+
+# Training outputs
+policies/*.zip
+rollouts/
+logs/*.log
+logs/*.jsonl
+logs/*.json
+logs/*.prom
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.bak
+*.cache
+
+# Large files
+*.usd
+*.usda
+*.usdc
+*.stl
+*.obj
+*.fbx
+*.dae
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# Test outputs
+.pytest_cache/
+.coverage
+htmlcov/
