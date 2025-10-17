@@ -1,7 +1,32 @@
-# RoArm M3 + Isaac Sim 5.0 - Clean Start
+# RoArm M3 + Isaac Sim 5.0 - Production Ready
 
 **생성일**: 2025년 10월 15일  
+**최종 업데이트**: 2025년 10월 17일  
+**상태**: ✅ **프리플라이트 전체 PASS** - 개발 준비 완료  
 **목적**: RoArm M3 로봇팔을 Isaac Sim 5.0에서 처음부터 올바르게 설정하고 강화학습 수행
+
+---
+
+## 🎉 현재 상태: DevOps 인프라 완성
+
+### ✅ 완료된 작업
+- [x] **프리플라이트 시스템 구축** (2025-10-17)
+  - 3단계 자동 검증: System Check, Isaac Extensions, USD Integrity
+  - 타임아웃 처리, JSON 로그 아카이브, 색상 출력
+  - pip 설치 방식 Isaac Sim 환경 완벽 지원
+  - Isaac 번들 pxr 사용 (pip install usd-core 금지)
+  
+- [x] **USD 무결성 검사 강화** (2025-10-17)
+  - Stage metadata 검증 (metersPerUnit, upAxis)
+  - PhysX Articulation 검증
+  - Rigid Body/Mass/Collision 검증
+  - Joint DriveAPI 검증
+  - 경고/실패 구분 및 자동 진단
+
+- [x] **Isaac Python 환경 자동 설정**
+  - pxr 모듈 경로 자동 탐색
+  - PYTHONPATH/LD_LIBRARY_PATH 자동 설정
+  - venv와 표준 설치 모두 지원
 
 ---
 
@@ -11,25 +36,40 @@
 roarm_isaac_clean/
 ├── README.md                    # 이 파일
 ├── docs/                        # 문서 모음
-│   ├── LESSONS_LEARNED.md      # 이전 프로젝트(codex_mcp)에서 배운 교훈
+│   ├── LESSONS_LEARNED.md      # 이전 프로젝트에서 배운 교훈
 │   ├── SETUP_GUIDE.md          # 단계별 설정 가이드
+│   ├── DEVOPS_GUIDE.md         # DevOps 인프라 가이드 (NEW)
 │   └── TROUBLESHOOTING.md      # 문제 해결 가이드
+├── devops/                      # DevOps 인프라 (NEW)
+│   ├── preflight_all.sh        # 마스터 프리플라이트 (타임아웃, JSON 로깅)
+│   ├── preflight/              # 개별 프리플라이트 검사
+│   │   ├── check_system.sh            # GPU, 드라이버, Vulkan, Python
+│   │   ├── check_isaac_extensions.py  # Isaac 확장 로드 검사
+│   │   └── check_usd_integrity.sh     # USD 스키마 무결성 검사
+│   ├── isaac_python.sh         # pxr 환경 설정 래퍼
+│   ├── setup_isaac_python_env.sh      # 환경 변수 자동 설정
+│   └── diagnose_python_env.sh  # 환경 진단 도구
 ├── resources/                   # 수집한 자료 모음
 │   ├── isaac_sim/              # Isaac Sim 5.0 관련 자료
 │   ├── roarm_m3/               # RoArm M3 관련 자료
-│   ├── community/              # 커뮤니티 자료 (Reddit, GitHub)
+│   ├── community/              # 커뮤니티 자료
 │   └── RESOURCE_INDEX.md       # 자료 검색 인덱스
 ├── scripts/                     # Python 스크립트
+│   ├── convert_urdf_to_usd.py  # URDF → USD 변환
 │   ├── setup/                  # 초기 설정 스크립트
-│   └── utils/                  # 유틸리티 함수
+│   └── usd/                    # USD 관련 유틸리티
+│       └── verify_usd_quick.py # USD 빠른 검증 (NEW)
 ├── assets/                      # 로봇 모델 및 에셋
 │   └── roarm_m3/
 │       ├── urdf/               # URDF 파일
-│       ├── meshes/             # 메시 파일
-│       └── usd/                # USD 파일
+│       ├── meshes/             # STL 메시 파일
+│       └── usd/                # USD 파일 (변환 결과)
 ├── configs/                     # 설정 파일
 │   ├── robot_config.yaml       # 로봇 설정
 │   └── training_config.yaml    # 학습 설정
+├── logs/                        # 로그 디렉토리 (NEW)
+│   ├── preflight/              # 프리플라이트 로그 + JSON 아카이브
+│   └── isaac/                  # Isaac Sim 실행 로그
 └── tests/                       # 테스트 코드
     └── test_robot_load.py      # 로봇 로딩 테스트
 ```
@@ -66,35 +106,103 @@ roarm_isaac_clean/
 
 ---
 
-## 🎯 다음 단계: Phase 2 자료 수집
+## 🚀 빠른 시작
 
-### 목표
-Isaac Sim 5.0과 RoArm M3 관련 자료를 수집하여 올바른 방법론 확립
+### 1. 프리플라이트 검사 실행
+```bash
+# 전체 프리플라이트 (시스템, 확장, USD 무결성)
+bash devops/preflight_all.sh
 
-### 작업 항목
-1. **Isaac Sim 5.0 공식 문서**
-   - Articulation API 가이드
-   - URDF Import best practices
-   - Fixed-base robot 설정 방법
-   - Physics 설정 튜토리얼
+# 개별 검사
+bash devops/preflight/check_system.sh
+python devops/preflight/check_isaac_extensions.py
+bash devops/preflight/check_usd_integrity.sh assets/roarm_m3/usd/roarm_m3.usd
+```
 
-2. **RoArm M3 자료**
-   - 공식 URDF 파일
-   - 제조사 스펙
-   - 커뮤니티 예제
+**성공 시 출력**:
+```
+========================================================================
+Total: 3  PASS:3  FAIL:0  SKIP:0
+ALL PREFLIGHT CHECKS PASSED!
+System ready for Isaac Sim development.
+```
 
-3. **커뮤니티 자료**
-   - Reddit, NVIDIA Forums
-   - GitHub Issues
-   - 관련 튜토리얼
+### 2. URDF → USD 변환
+```bash
+source ~/isaacsim-venv/bin/activate
+python scripts/convert_urdf_to_usd.py
+```
 
-### 완료 기준
-- [ ] Isaac Sim 5.0 fixed-base 설정 방법 이해
-- [ ] RoArm M3 URDF 파일 확보
-- [ ] 최소 2개 참고 예제 확보
-- [ ] `docs/REFERENCES.md` 작성 완료
+### 3. USD 빠른 검증
+```bash
+python scripts/usd/verify_usd_quick.py assets/roarm_m3/usd/roarm_m3.usd
+```
 
-**예상 소요 시간**: 1-2시간
+### 4. GUI로 USD 확인
+```bash
+# (작업 예정 - GUI 래퍼 스크립트 추가 예정)
+```
+
+---
+
+## 📊 프리플라이트 시스템
+
+### 마스터 프리플라이트
+- **경로**: `devops/preflight_all.sh`
+- **기능**:
+  - 3단계 검사를 순차 실행 (System → Extensions → USD)
+  - 각 단계별 타임아웃 설정 (30s/120s/45s)
+  - 실패해도 계속 진행 (모든 이슈 수집)
+  - JSON 로그 자동 아카이브 (`logs/preflight/*.json`)
+  - 색상 코드 출력 (PASS=녹색, FAIL=빨강, SKIP=노랑)
+
+### 개별 프리플라이트 검사
+
+#### 1. System Check (`devops/preflight/check_system.sh`)
+- NVIDIA 드라이버 (≥550)
+- GPU 메모리
+- Vulkan 지원
+- Python 버전 (3.10 또는 3.11)
+- 환경 변수 (CUDA_VISIBLE_DEVICES, VK_ICD_FILENAMES)
+
+#### 2. Isaac Extensions (`devops/preflight/check_isaac_extensions.py`)
+- SimulationApp headless 부팅 (5초 이내)
+- 필수 확장 로드 확인:
+  - `isaacsim.asset.importer.urdf`
+  - `isaacsim.core.api`
+  - `omni.isaac.core`
+  - `omni.physx`
+  - `omni.usd`
+
+#### 3. USD Integrity (`devops/preflight/check_usd_integrity.sh`)
+- Isaac 번들 pxr 자동 탐색 및 사용
+- Stage metadata (metersPerUnit=1.0, upAxis=Z)
+- PhysX Articulation Root (정확히 1개, 중첩 금지)
+- Rigid Body MassAPI 존재
+- Collision 메시 존재
+- Joint DriveAPI 바인딩
+
+---
+
+## 🎯 다음 단계
+
+### Phase 3: GUI 테스트 및 시각적 검증
+- [ ] GUI 래퍼 스크립트 작성 (`devops/run_isaac_supervised.sh`)
+- [ ] USD 파일 시각적 검증 (STL 메시, 조인트 동작)
+- [ ] Collision 메시 표시 확인
+- [ ] 물리 시뮬레이션 테스트
+
+### Phase 4: URDF → USD 변환 개선
+- [ ] Collision 메시 자동 생성
+- [ ] JointDriveAPI 자동 적용
+- [ ] MassAPI 자동 계산
+- [ ] 변환 스크립트 리팩토링
+
+### Phase 5: 강화학습 파이프라인
+- [ ] Gymnasium 환경 구현
+- [ ] Observation/Action space 정의
+- [ ] Reward 함수 설계
+- [ ] PPO 학습 실행
 
 ---
 
