@@ -61,3 +61,6 @@ Thumbs.db
 .pytest_cache/
 .coverage
 htmlcov/
+
+# 환경 변수 스냅샷 (민감 정보 포함 가능)
+logs/isaac/env_*.txt
