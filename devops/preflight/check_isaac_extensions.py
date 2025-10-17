@@ -43,9 +43,15 @@ def main():
     print_color(YELLOW, "[2/3] Testing Headless Boot (5 sec timeout)")
     
     try:
+        # stderr 리디렉션으로 불필요한 경고 숨기기
+        import logging
+        logging.getLogger().setLevel(logging.ERROR)
+        
         simulation_app = SimulationApp({
             "headless": True,
-            "renderer": "RayTracedLighting"
+            "renderer": "RayTracedLighting",
+            "hide_ui": True,
+            "active_gpu": 0,
         })
         print_color(GREEN, "✓ SimulationApp initialized successfully")
     except Exception as e:

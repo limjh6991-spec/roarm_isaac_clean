@@ -4,83 +4,97 @@
 # 모든 Preflight 검사를 순차적으로 실행
 # ==============================================================================
 
-set -Eeuo pipefail
+set -u  # -e는 각 스텝 내부에서 제어
+IFS=$'\n\t'
 
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-NC='\033[0m'
+# Colors
+RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
+printf "========================================================================\n"
+printf "              Master Preflight Check\n"
+printf "========================================================================\n\n"
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-cd "$PROJECT_ROOT"
+cd "$PROJECT_ROOT" || exit 2
+mkdir -p logs/preflight
+TS="$(date +'%Y%m%d_%H%M%S')"
+LOG="logs/preflight/preflight_${TS}.log"
+JSON="logs/preflight/preflight_${TS}.json"
 
-echo -e "${GREEN}========================================================================"
-echo "              Master Preflight Check"
-echo "========================================================================${NC}"
-echo ""
+# 스텝 정의: [이름|스크립트 경로|타임아웃(초)]
+STEPS=(
+  "System Check|devops/preflight/check_system.sh|30"
+  "Isaac Extensions|devops/preflight/check_isaac_extensions.py|120"
+  "USD Integrity|devops/preflight/check_usd_integrity.sh|45"
+)
 
-TOTAL_CHECKS=3
-PASSED=0
-FAILED=0
+# 집계
+PASS=0; FAIL=0; WARN=0; SKIP=0
+RESULTS=()
 
-# ------------------------------------------------------------------------------
-# 1. System Check
-# ------------------------------------------------------------------------------
-echo -e "${YELLOW}[1/$TOTAL_CHECKS] System Check (GPU, Driver, Vulkan, Python)${NC}"
-if bash devops/preflight/check_system.sh; then
-    ((PASSED++))
-else
-    ((FAILED++))
-fi
-echo ""
-
-# ------------------------------------------------------------------------------
-# 2. Isaac Sim Extensions Check
-# ------------------------------------------------------------------------------
-echo -e "${YELLOW}[2/$TOTAL_CHECKS] Isaac Sim Extensions Check${NC}"
-if python devops/preflight/check_isaac_extensions.py; then
-    ((PASSED++))
-else
-    ((FAILED++))
-    echo -e "${RED}Skipping remaining checks due to Isaac Sim unavailability.${NC}"
-    exit 1
-fi
-echo ""
-
-# ------------------------------------------------------------------------------
-# 3. USD Model Integrity Check (if available)
-# ------------------------------------------------------------------------------
-echo -e "${YELLOW}[3/$TOTAL_CHECKS] USD Model Integrity Check${NC}"
-USD_FILE="assets/roarm_m3/usd/roarm_m3.usd"
-
-if [ -f "$USD_FILE" ]; then
-    if python devops/preflight/check_usd_integrity.py "$USD_FILE"; then
-        ((PASSED++))
-    else
-        ((FAILED++))
+run_step () {
+  local name="$1" path="$2" to="$3"
+  
+  # Python 스크립트 확인
+  if [[ "$path" == *.py ]]; then
+    if [[ ! -f "$path" ]]; then
+      printf "${YELLOW}[SKIP]${NC} %s (script not found: %s)\n" "$name" "$path" | tee -a "$LOG"
+      SKIP=$((SKIP+1))
+      RESULTS+=("{\"name\":\"$name\",\"status\":\"SKIP\"}")
+      return 0
     fi
-else
-    echo -e "${YELLOW}⚠ USD file not found: $USD_FILE (skipping check)${NC}"
-    echo "  This is normal if you haven't generated USD yet."
-fi
-echo ""
+  elif [[ ! -x "$path" ]]; then
+    printf "${YELLOW}[SKIP]${NC} %s (script not found: %s)\n" "$name" "$path" | tee -a "$LOG"
+    SKIP=$((SKIP+1))
+    RESULTS+=("{\"name\":\"$name\",\"status\":\"SKIP\"}")
+    return 0
+  fi
 
-# ------------------------------------------------------------------------------
-# Summary
-# ------------------------------------------------------------------------------
-echo -e "${GREEN}========================================================================"
-echo "              Preflight Summary"
-echo "========================================================================${NC}"
-echo -e "Total Checks: $TOTAL_CHECKS"
-echo -e "Passed: ${GREEN}$PASSED${NC}"
-echo -e "Failed: ${RED}$FAILED${NC}"
-echo ""
+  printf "[RUN] %s (timeout=%ss)\n" "$name" "$to" | tee -a "$LOG"
+  set +e
+  if [[ "$path" == *.py ]]; then
+    timeout "$to" bash -c "source ~/isaacsim-venv/bin/activate && python \"$path\" 2>/dev/null" | tee -a "$LOG"
+  else
+    timeout "$to" bash "$path" 2>&1 | tee -a "$LOG"
+  fi
+  rc=${PIPESTATUS[0]}
+  set -e
 
-if [ $FAILED -gt 0 ]; then
-    echo -e "${RED}PREFLIGHT FAILED!${NC} Fix errors above before proceeding."
-    exit 1
+  case "$rc" in
+    0)
+      printf "${GREEN}[PASS]${NC} %s\n\n" "$name" | tee -a "$LOG"
+      PASS=$((PASS+1)); RESULTS+=("{\"name\":\"$name\",\"status\":\"PASS\"}")
+      ;;
+    124)
+      printf "${RED}[TIMEOUT]${NC} %s\n\n" "$name" | tee -a "$LOG"
+      FAIL=$((FAIL+1)); RESULTS+=("{\"name\":\"$name\",\"status\":\"TIMEOUT\"}")
+      ;;
+    *)
+      printf "${RED}[FAIL]${NC} %s (rc=%s)\n\n" "$name" "$rc" | tee -a "$LOG"
+      FAIL=$((FAIL+1)); RESULTS+=("{\"name\":\"$name\",\"status\":\"FAIL\",\"rc\":$rc}")
+      ;;
+  esac
+}
+
+i=1; total=${#STEPS[@]}
+for s in "${STEPS[@]}"; do
+  name="${s%%|*}"; rest="${s#*|}"; path="${rest%%|*}"; to="${rest##*|}"
+  printf "[%s/%s] %s\n" "$i" "$total" "$name" | tee -a "$LOG"
+  run_step "$name" "$path" "$to"
+  i=$((i+1))
+done
+
+printf "========================================================================\n"
+printf "Total: %s  ${GREEN}PASS:%s${NC}  ${RED}FAIL:%s${NC}  ${YELLOW}SKIP:%s${NC}\n" "$total" "$PASS" "$FAIL" "$SKIP" | tee -a "$LOG"
+[[ $FAIL -gt 0 ]] && STATUS="FAIL" || STATUS="PASS"
+
+# JSON 아카이브
+printf '{"timestamp":"%s","status":"%s","summary":{"total":%d,"pass":%d,"fail":%d,"skip":%d},"steps":[%s]}\n' \
+  "$TS" "$STATUS" "$total" "$PASS" "$FAIL" "$SKIP" "$(IFS=, ; echo "${RESULTS[*]}")" > "$JSON"
+
+if [[ "$STATUS" == "FAIL" ]]; then
+  printf "${RED}PREFLIGHT FAILED!${NC} Fix errors above before proceeding.\n"
+  exit 1
 else
-    echo -e "${GREEN}ALL PREFLIGHT CHECKS PASSED!${NC}"
-    echo "System ready for Isaac Sim development."
-    exit 0
+  printf "${GREEN}ALL PREFLIGHT CHECKS PASSED!${NC}\nSystem ready for Isaac Sim development.\n"
+  exit 0
 fi
