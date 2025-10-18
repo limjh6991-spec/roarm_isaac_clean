@@ -113,11 +113,12 @@ python devops/preflight/check_isaac_extensions.py
 ### 3. USD Integrity Check
 
 ```bash
-python devops/preflight/check_usd_integrity.py assets/roarm_m3/usd/roarm_m3.usd
+bash devops/preflight/check_usd_integrity.sh assets/roarm_m3/usd/roarm_m3.usd
 ```
 
 **검사 항목**:
-- ✅ USD Stage 로드 가능 여부
+- ✅ USD Stage 로드 가능 여부 (pxr 모듈 사용)
+- ✅ Stage 메타데이터 (metersPerUnit, upAxis, defaultPrim)
 - ✅ RigidBody에 MassAPI 적용 확인
 - ✅ ArticulationRootAPI 중복 검사
 - ✅ Joint DriveAPI 설정 확인
@@ -145,6 +146,194 @@ bash devops/preflight_all.sh
 1. System → 2. Extensions → 3. USD Integrity
 
 **VS Code**: `Ctrl+Shift+P` → `Tasks: Run Task` → `Preflight: All Checks`
+
+---
+
+## ⚠️ CRITICAL: pxr 모듈 환경 설정 (pip 설치 시)
+
+### 문제 배경
+
+**pip으로 설치한 Isaac Sim 5.0**은 표준 설치본과 달리 `python.sh` 런처가 없으며, **pxr (USD Python 바인딩) 모듈이 기본 PYTHONPATH에 포함되지 않습니다.**
+
+USD 파일 무결성 검사, URDF→USD 변환 등의 작업은 **반드시 Isaac Sim 번들에 포함된 pxr 모듈을 사용해야 합니다.**
+
+### 🚫 금지 사항: pip install usd-core
+
+```bash
+# ❌ 절대 실행 금지!
+pip install usd-core
+```
+
+**이유**:
+- PyPI의 `usd-core`는 Isaac Sim과 **ABI(Application Binary Interface)가 다름**
+- PhysX, Omniverse 확장과 충돌 발생
+- 런타임 크래시, 스키마 불일치 유발
+
+### ✅ 올바른 방법: Isaac 번들 pxr 사용
+
+#### 1. pxr 모듈 위치 확인
+
+pip으로 설치한 경우:
+```bash
+# Isaac Sim venv 활성화
+source ~/isaacsim-venv/bin/activate
+
+# pxr 모듈 위치 찾기
+find ~/isaacsim-venv/lib/python3.11/site-packages -path "*/omni.usd.libs*/pxr" -type d
+
+# 예시 출력:
+# ~/isaacsim-venv/lib/python3.11/site-packages/isaacsim/extscache/omni.usd.libs-1.0.1+8131b85d.lx64.r.cp311/pxr
+```
+
+**중요**: 라이브러리 경로는 **`/bin`** 디렉토리에 있습니다 (**`/lib64` 아님!**)
+
+```bash
+# 올바른 경로 예시:
+export LD_LIBRARY_PATH="/home/user/isaacsim-venv/lib/python3.11/site-packages/isaacsim/extscache/omni.usd.libs-1.0.1+8131b85d.lx64.r.cp311/bin:${LD_LIBRARY_PATH:-}"
+```
+
+#### 2. 환경변수 설정 (수동 실행 시)
+
+```bash
+# USD 라이브러리 경로 찾기
+USD_LIBS_DIR=$(find ~/isaacsim-venv/lib/python3.11/site-packages \
+  -path "*/omni.usd.libs*/pxr" -type d | head -1)
+USD_LIBS_DIR=$(dirname "$USD_LIBS_DIR")
+
+# PYTHONPATH 설정
+export PYTHONPATH="$USD_LIBS_DIR:${PYTHONPATH:-}"
+
+# LD_LIBRARY_PATH 설정 (주의: /bin 사용!)
+export LD_LIBRARY_PATH="$USD_LIBS_DIR/bin:${LD_LIBRARY_PATH:-}"
+
+# Python 실행
+python your_usd_script.py
+```
+
+#### 3. 자동 래퍼 스크립트 사용 (권장)
+
+**방법 A: isaac_python.sh 사용**
+```bash
+# devops/isaac_python.sh가 자동으로 환경 설정
+bash devops/isaac_python.sh -c "import pxr; print(pxr.__file__)"
+bash devops/isaac_python.sh your_script.py
+```
+
+**방법 B: preflight 스크립트 직접 실행**
+```bash
+# check_usd_integrity.sh는 내장 환경 감지 기능 포함
+bash devops/preflight/check_usd_integrity.sh assets/roarm_m3/usd/roarm_m3.usd
+```
+
+#### 4. pxr 모듈 로드 검증
+
+**진단 스크립트**:
+```python
+import sys
+import importlib.util
+
+# pxr.Usd 모듈 위치 확인
+spec = importlib.util.find_spec("pxr.Usd")
+if spec and spec.origin:
+    print(f"✓ pxr.Usd found at: {spec.origin}")
+    # 예시: .../omni.usd.libs-1.0.1+.../pxr/Usd/_usd.so
+else:
+    print("✗ pxr.Usd not found in PYTHONPATH")
+    sys.exit(1)
+
+# 실제 import 테스트
+try:
+    from pxr import Usd, UsdPhysics, PhysxSchema
+    print("✓ pxr modules loaded successfully")
+except ImportError as e:
+    print(f"✗ Import failed: {e}")
+    sys.exit(1)
+```
+
+#### 5. 트러블슈팅
+
+**증상 1: ModuleNotFoundError: No module named 'pxr'**
+```bash
+# 해결: PYTHONPATH 확인
+echo $PYTHONPATH
+# omni.usd.libs가 포함되어 있어야 함
+
+# 자동 수정
+source devops/isaac_python.sh
+```
+
+**증상 2: ImportError: libusd_*.so: cannot open shared object file**
+```bash
+# 해결: LD_LIBRARY_PATH 확인
+echo $LD_LIBRARY_PATH
+# .../omni.usd.libs-*/bin이 포함되어 있어야 함 (/lib64 아님!)
+
+# 경로 확인
+ls -la $USD_LIBS_DIR/bin/libusd_*.so
+```
+
+**증상 3: Python subprocess에서 pxr import 실패**
+```bash
+# 문제: 환경변수가 서브프로세스로 전달되지 않음
+# 해결: exec 전에 export 실행
+export PYTHONPATH="..."
+export LD_LIBRARY_PATH="..."
+python -c "import pxr"  # 이제 성공
+```
+
+### 구현 참고: check_usd_integrity.sh
+
+devops/preflight/check_usd_integrity.sh는 다음 로직을 사용합니다:
+
+```bash
+find_isaac_python() {
+  # 1. 표준 설치 (python.sh 존재)
+  if [[ -f "$ISAAC_PATH/python.sh" ]]; then
+    echo "standard:$ISAAC_PATH/python.sh"
+    return
+  fi
+  
+  # 2. pip 설치 (venv 감지)
+  if python -c "import isaacsim" 2>/dev/null; then
+    echo "venv:$(which python)"
+    return
+  fi
+  
+  echo "none"
+}
+
+run_with_isaac_python() {
+  local isaac_py="$1"
+  local usd_file="$2"
+  
+  if [[ "$isaac_py" == venv:* ]]; then
+    # pxr 경로 자동 탐색
+    local pxr_path=$(find "$VIRTUAL_ENV/lib" -path "*/omni.usd.libs*/pxr" | head -1)
+    local usd_libs_dir=$(dirname "$pxr_path")
+    
+    # 환경변수 설정 후 Python 실행
+    export PYTHONPATH="$usd_libs_dir:${PYTHONPATH:-}"
+    export LD_LIBRARY_PATH="$usd_libs_dir/bin:${LD_LIBRARY_PATH:-}"
+    
+    python - "$usd_file" <<'PYTHON'
+import sys
+from pxr import Usd, UsdPhysics
+# USD 검증 로직...
+PYTHON
+  fi
+}
+```
+
+### 핵심 교훈
+
+| 항목 | 내용 |
+|------|------|
+| **금지** | `pip install usd-core` (ABI 불일치) |
+| **필수** | Isaac 번들 pxr 사용 (omni.usd.libs) |
+| **경로** | 라이브러리는 `/bin` 디렉토리 (**`/lib64` 아님!**) |
+| **환경변수** | PYTHONPATH + LD_LIBRARY_PATH 모두 설정 |
+| **진단** | `importlib.util.find_spec("pxr.Usd").origin` |
+| **자동화** | `devops/isaac_python.sh` 래퍼 사용 |
 
 ---
 
@@ -335,7 +524,25 @@ pip install --upgrade isaacsim
 - DriveAPI 누락: 정상 (post-import에서 설정)
 - MassAPI 누락: URDF에 inertia 추가 필요
 
-### 6. "로그 파일이 너무 큼"
+### 6. "pxr 모듈 import 실패"
+
+**증상**: `ModuleNotFoundError: No module named 'pxr'`
+
+**해결**:
+```bash
+# 1. Isaac Sim venv 활성화 확인
+source ~/isaacsim-venv/bin/activate
+
+# 2. devops/isaac_python.sh 래퍼 사용
+bash devops/isaac_python.sh -c "import pxr"
+
+# 3. 수동 환경변수 설정 (고급)
+# 위 "⚠️ CRITICAL: pxr 모듈 환경 설정" 섹션 참조
+```
+
+**주의**: `pip install usd-core` 절대 금지!
+
+### 7. "로그 파일이 너무 큼"
 
 **증상**: logs/isaac/*.log 파일이 수백 MB
 
