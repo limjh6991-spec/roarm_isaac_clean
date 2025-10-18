@@ -116,6 +116,85 @@ self._articulation = SingleArticulation(prim_path=...)
 
 ---
 
+### 문제 4: pip 설치 시 pxr 모듈 환경 설정 ⚠️ **신규 프로젝트 핵심**
+
+**증상:**
+```python
+ModuleNotFoundError: No module named 'pxr'
+```
+- USD 파일 검증 스크립트 실행 시 pxr 모듈을 찾을 수 없음
+- `python -c "import pxr"` 직접 실행 시에도 동일한 오류
+
+**시도한 해결책:**
+1. ❌ **pip install usd-core** → ABI 불일치로 실패
+   - PyPI의 usd-core는 Isaac Sim 번들과 **다른 컴파일러/설정으로 빌드됨**
+   - PhysxSchema, Omniverse 확장과 충돌 발생
+   - 런타임 크래시 및 스키마 검증 실패
+
+2. ✅ **Isaac 번들 pxr 사용** → 성공
+   - pip 설치본의 omni.usd.libs 경로 자동 탐색
+   - PYTHONPATH + LD_LIBRARY_PATH 설정
+
+**근본 원인:**
+- **pip으로 설치한 Isaac Sim 5.0**은 표준 설치본과 달리 `python.sh` 런처가 없음
+- pxr 모듈은 `$VENV/lib/python3.11/site-packages/isaacsim/extscache/omni.usd.libs-*/pxr`에 있음
+- **기본 PYTHONPATH에 포함되지 않아** 수동 환경 설정 필수
+
+**성공한 해결책:**
+```bash
+# 1. pxr 모듈 위치 자동 탐색
+USD_LIBS_DIR=$(find ~/isaacsim-venv/lib/python3.11/site-packages \
+  -path "*/omni.usd.libs*/pxr" -type d | head -1)
+USD_LIBS_DIR=$(dirname "$USD_LIBS_DIR")
+
+# 2. PYTHONPATH 설정
+export PYTHONPATH="$USD_LIBS_DIR:${PYTHONPATH:-}"
+
+# 3. LD_LIBRARY_PATH 설정 (주의: /bin 디렉토리!)
+export LD_LIBRARY_PATH="$USD_LIBS_DIR/bin:${LD_LIBRARY_PATH:-}"
+
+# 4. Python 실행
+python -c "import pxr; print(pxr.__file__)"
+```
+
+**핵심 발견:**
+- 라이브러리 경로는 **`/bin`** 디렉토리 (**`/lib64` 아님!**)
+- Python subprocess 실행 시 환경변수가 자동 전달되지 않음
+- `export` 후 `exec python`으로 실행해야 함 (sourced script는 불충분)
+
+**검증 방법:**
+```python
+import importlib.util
+
+# pxr.Usd 모듈 실제 위치 확인
+spec = importlib.util.find_spec("pxr.Usd")
+print(f"pxr.Usd location: {spec.origin}")
+# 예시: .../omni.usd.libs-1.0.1+8131b85d.lx64.r.cp311/pxr/Usd/_usd.so
+```
+
+**자동화 도구:**
+- `devops/isaac_python.sh`: pxr 환경 자동 설정 래퍼
+- `devops/preflight/check_usd_integrity.sh`: 설치 타입 자동 감지 (standard vs pip)
+
+**교훈:**
+- 🚫 **절대 금지**: `pip install usd-core` (ABI 불일치)
+- ✅ **필수**: Isaac 번들 pxr 사용 (omni.usd.libs)
+- ✅ **경로 주의**: 라이브러리는 `/bin` (**`/lib64` 아님!**)
+- ✅ **환경변수**: PYTHONPATH + LD_LIBRARY_PATH 모두 설정
+- ✅ **진단 도구**: `importlib.util.find_spec()` 사용
+- ✅ **자동화**: 래퍼 스크립트로 환경 설정 캡슐화
+
+**영향 범위:**
+- ✅ USD 무결성 검사: 성공 (pxr from Isaac bundle)
+- ✅ URDF→USD 변환: pxr 의존성 있는 모든 작업
+- ✅ 프리플라이트 시스템: check_usd_integrity.sh 정상 동작
+
+**참고 문서:**
+- `docs/DEVOPS_GUIDE.md` → "⚠️ CRITICAL: pxr 모듈 환경 설정" 섹션
+- `devops/preflight/check_usd_integrity.sh` → `find_isaac_python()`, `run_with_isaac_python()` 함수
+
+---
+
 ## 🏗️ 아키텍처 결정사항
 
 ### Dual Environment (Python 3.11 / 3.12 분리)

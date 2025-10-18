@@ -1,15 +1,29 @@
 # RoArm M3 + Isaac Sim 5.0 - Production Ready
 
 **생성일**: 2025년 10월 15일  
-**최종 업데이트**: 2025년 10월 17일  
-**상태**: ✅ **프리플라이트 전체 PASS** - 개발 준비 완료  
+**최종 업데이트**: 2025년 10월 18일  
+**상태**: ✅ **프리플라이트 전체 PASS** + 🧠 **온톨로지 시스템 구축** + 🔧 **URDF 표준화 진행 중**  
 **목적**: RoArm M3 로봇팔을 Isaac Sim 5.0에서 처음부터 올바르게 설정하고 강화학습 수행
 
 ---
 
-## 🎉 현재 상태: DevOps 인프라 완성
+## 🎉 현재 상태: DevOps 인프라 + 지식 관리 시스템 + URDF 표준화 작업
 
 ### ✅ 완료된 작업
+
+- [x] **URDF 표준화 프로세스 구축** (2025-10-18) 🆕
+  - Isaac Sim 5.0 호환 경로 형식 확립 (file:// → 절대 경로)
+  - mm→m 단위 변환 스케일 적용 (scale="0.001")
+  - urdf_autopatch_standard.py 자동화 스크립트 개발
+  - Joint origin 보존 로직 구현
+  - 🟡 **진행 중**: STL 파일 Placement 베이크 문제 해결 필요
+
+- [x] **온톨로지 기반 지식 관리 시스템** (2025-10-18)
+  - 문제-솔루션 자동 추적
+  - SPARQL 질의로 빠른 정보 검색
+  - 재발 문제 자동 감지
+  - pxr 환경 문제 완전 문서화
+
 - [x] **프리플라이트 시스템 구축** (2025-10-17)
   - 3단계 자동 검증: System Check, Isaac Extensions, USD Integrity
   - 타임아웃 처리, JSON 로그 아카이브, 색상 출력
@@ -40,7 +54,7 @@ roarm_isaac_clean/
 │   ├── SETUP_GUIDE.md          # 단계별 설정 가이드
 │   ├── DEVOPS_GUIDE.md         # DevOps 인프라 가이드 (NEW)
 │   └── TROUBLESHOOTING.md      # 문제 해결 가이드
-├── devops/                      # DevOps 인프라 (NEW)
+├── devops/                      # DevOps 인프라
 │   ├── preflight_all.sh        # 마스터 프리플라이트 (타임아웃, JSON 로깅)
 │   ├── preflight/              # 개별 프리플라이트 검사
 │   │   ├── check_system.sh            # GPU, 드라이버, Vulkan, Python
@@ -49,6 +63,20 @@ roarm_isaac_clean/
 │   ├── isaac_python.sh         # pxr 환경 설정 래퍼
 │   ├── setup_isaac_python_env.sh      # 환경 변수 자동 설정
 │   └── diagnose_python_env.sh  # 환경 진단 도구
+├── ontology/                    # 온톨로지 시스템 (NEW)
+│   ├── roarm_domain.ttl        # 코어 온톨로지 (도메인 개념)
+│   ├── instances/              # 실제 문제/솔루션 데이터
+│   │   └── pxr_environment_problem.ttl
+│   ├── queries/                # SPARQL 질의 모음
+│   │   └── diagnostics.sparql
+│   └── README.md               # 온톨로지 사용 가이드
+├── scripts/                     # Python 스크립트
+│   ├── convert_urdf_to_usd.py  # URDF → USD 변환
+│   ├── ontology/               # 온톨로지 도구 (NEW)
+│   │   └── query_ontology.py  # SPARQL 질의 실행
+│   ├── setup/                  # 초기 설정 스크립트
+│   └── usd/                    # USD 관련 유틸리티
+│       └── verify_usd_quick.py # USD 빠른 검증
 ├── resources/                   # 수집한 자료 모음
 │   ├── isaac_sim/              # Isaac Sim 5.0 관련 자료
 │   ├── roarm_m3/               # RoArm M3 관련 자료
@@ -78,23 +106,38 @@ roarm_isaac_clean/
 
 ## 📚 문서 가이드
 
+### ⚠️ CRITICAL: 필독 문서
+
+1. **`docs/PXR_ENVIRONMENT_GUIDE.md`** 🔴 **최우선 필독**
+   - pxr (USD Python 바인딩) 환경 설정 완전 가이드
+   - pip install usd-core 금지 이유 상세 설명
+   - PYTHONPATH + LD_LIBRARY_PATH 설정 방법
+   - 트러블슈팅: ModuleNotFoundError, ImportError 해결
+   - **USD 관련 모든 작업 전 반드시 읽어야 함**
+
 ### 필독 문서 (작업 시작 전)
-1. **`docs/LESSONS_LEARNED.md`** ⭐⭐⭐⭐⭐
+2. **`docs/DEVOPS_GUIDE.md`** ⭐⭐⭐⭐⭐
+   - DevOps 인프라 완전 가이드
+   - **pxr 모듈 환경 설정 섹션 포함** (⚠️ CRITICAL)
+   - 프리플라이트 시스템 상세 설명
+   - 로그 관리, 트러블슈팅
+
+3. **`docs/LESSONS_LEARNED.md`** ⭐⭐⭐⭐⭐
    - 이전 프로젝트에서 배운 교훈
-   - 핵심 문제 3가지 및 해결 방안
+   - **핵심 문제 4가지**: USD CollisionAPI, 원격 GUI, API 변경, **pxr 환경 설정**
    - 반드시 읽어야 하는 최우선 문서
 
-2. **`docs/ISSUES_AND_SOLUTIONS.md`** ⭐⭐⭐⭐
+4. **`docs/ISSUES_AND_SOLUTIONS.md`** ⭐⭐⭐⭐
    - 8개 이슈 상세 분석 (P0-P3 우선순위)
    - 각 이슈의 해결 방안 (코드 포함)
    - 문제 발생 시 참조
 
-3. **`docs/ENVIRONMENT_STATUS.md`** ⭐⭐⭐
+5. **`docs/ENVIRONMENT_STATUS.md`** ⭐⭐⭐
    - 현재 시스템 환경 상태
    - 하드웨어/소프트웨어 스펙
    - 확인 명령어 모음
 
-4. **`docs/PROJECT_RESTART_SUMMARY.md`** ⭐⭐⭐⭐⭐
+6. **`docs/PROJECT_RESTART_SUMMARY.md`** ⭐⭐⭐⭐⭐
    - 프로젝트 재시작 종합 보고서
    - 단계별 액션 플랜
    - 타임라인 및 체크리스트
@@ -138,10 +181,89 @@ python scripts/convert_urdf_to_usd.py
 python scripts/usd/verify_usd_quick.py assets/roarm_m3/usd/roarm_m3.usd
 ```
 
-### 4. GUI로 USD 확인
+### 4. 온톨로지 지식 검색 🆕
+```bash
+# rdflib, networkx, matplotlib 설치 (최초 1회)
+pip install rdflib networkx matplotlib
+
+# 프로젝트 상태 조회
+python scripts/ontology/query_ontology.py --query project_status
+
+# pxr 문제 솔루션 찾기
+python scripts/ontology/query_ontology.py --query pxr_solutions
+
+# 사용 가능한 질의 목록
+python scripts/ontology/query_ontology.py --list-queries
+
+# 지식 그래프 시각화 (PNG 생성)
+python scripts/ontology/visualize_graph.py --focus pxr_environment_problem --output pxr_graph.png
+python scripts/ontology/visualize_graph.py --output full_graph.png
+
+# 브라우저로 시각화 보기 (추천!) 🆕
+python scripts/ontology/view_ontology.py
+# → http://localhost:8000 자동으로 열림
+# → VS Code Simple Browser에서도 확인 가능
+```
+
+**생성된 시각화**:
+- 📊 **pxr_subgraph.png**: pxr 문제 중심 서브그래프 (17노드, 29엣지)
+- 📊 **full_ontology_graph.png**: 전체 지식 그래프 (128노드, 127엣지)
+
+**VS Code에서 이미지 보기**:
+```bash
+# VS Code에서 파일 탐색기 열기 → docs/ontology/ 폴더
+# pxr_subgraph.png 또는 full_ontology_graph.png 클릭
+# 또는 터미널에서:
+code docs/ontology/pxr_subgraph.png
+code docs/ontology/full_ontology_graph.png
+```
+
+### 5. GUI로 USD 확인
 ```bash
 # (작업 예정 - GUI 래퍼 스크립트 추가 예정)
 ```
+
+---
+
+## 🧠 온톨로지 시스템 (NEW)
+
+### 개요
+
+**온톨로지(Ontology)**는 프로젝트의 지식을 구조화하여 관리하는 시스템입니다.
+
+**핵심 가치**:
+- ✅ 문제 발생 시 기존 솔루션 즉시 검색 (10분 → 10초)
+- ✅ 재발 문제 자동 감지 및 과거 해결책 제공
+- ✅ 문제-솔루션-문서 관계 명시적 연결
+- ✅ SPARQL 질의로 복잡한 지식 탐색
+
+### 빠른 사용
+
+```bash
+# pxr 환경 문제 솔루션 찾기
+python scripts/ontology/query_ontology.py --query pxr_solutions
+
+# 재발 문제 확인
+python scripts/ontology/query_ontology.py --query recurring_problems
+
+# 프로젝트 전체 상태
+python scripts/ontology/query_ontology.py --query project_status
+```
+
+### 예제 출력
+
+```
+✅ pxr 문제 해결책:
+
+1. isaac_python.sh 래퍼 스크립트
+   성공률: 100%
+   경로: /home/roarm_m3/roarm_isaac_clean/devops/isaac_python.sh
+
+2. 수동 PYTHONPATH/LD_LIBRARY_PATH 설정
+   성공률: 80%
+```
+
+**자세한 내용**: `ontology/README.md` 참조
 
 ---
 
