@@ -1,0 +1,23 @@
+link,kind,geom,file_or_size,scale,origin(xyz|rpy)
+world,visual,MISSING,,,0 0 0|0 0 0
+world,collision,MISSING,,,0 0 0|0 0 0
+base_link,visual,mesh,/home/roarm_m3/roarm_isaac_clean/assets/roarm_m3/meshes/visual/base_link.stl,0.001 0.001 0.001,0 0 0|0 0 0
+base_link,collision,cylinder,r=0.04 h=0.06,,0 0 0.03|0 0 0
+link_1,visual,mesh,/home/roarm_m3/roarm_isaac_clean/assets/roarm_m3/meshes/visual/link_1.stl,0.001 0.001 0.001,0 0 0|0 0 0
+link_1,collision,cylinder,r=0.035 h=0.08,,0 0 0.04|0 0 0
+link_2,visual,mesh,/home/roarm_m3/roarm_isaac_clean/assets/roarm_m3/meshes/visual/link_2.stl,0.001 0.001 0.001,0 0 0|0 0 0
+link_2,collision,cylinder,r=0.025 h=0.16,,0.08 0 0|0 1.57 0
+link_3,visual,mesh,/home/roarm_m3/roarm_isaac_clean/assets/roarm_m3/meshes/visual/link_3.stl,0.001 0.001 0.001,0 0 0|0 0 0
+link_3,collision,cylinder,r=0.02 h=0.15,,0.075 0 0|0 1.57 0
+link_4,visual,mesh,/home/roarm_m3/roarm_isaac_clean/assets/roarm_m3/meshes/visual/link_4.stl,0.001 0.001 0.001,0 0 0|0 0 0
+link_4,collision,cylinder,r=0.015 h=0.06,,0.03 0 0|0 1.57 0
+link_5,visual,mesh,/home/roarm_m3/roarm_isaac_clean/assets/roarm_m3/meshes/visual/link_5.stl,0.001 0.001 0.001,0 0 0|0 0 0
+link_5,collision,cylinder,r=0.012 h=0.04,,0.02 0 0|0 1.57 0
+gripper_base,visual,mesh,/home/roarm_m3/roarm_isaac_clean/assets/roarm_m3/meshes/visual/gripper_base.stl,0.001 0.001 0.001,0 0 0|0 0 0
+gripper_base,collision,box,0.03 0.04 0.02,,0.01 0 0.01|0 0 0
+gripper_left_finger,visual,mesh,/home/roarm_m3/roarm_isaac_clean/assets/roarm_m3/meshes/visual/gripper_left_finger.stl,0.001 0.001 0.001,0 0 0|0 0 0
+gripper_left_finger,collision,box,0.03 0.005 0.01,,0.015 0 0|0 0 0
+gripper_right_finger,visual,mesh,/home/roarm_m3/roarm_isaac_clean/assets/roarm_m3/meshes/visual/gripper_right_finger.stl,0.001 0.001 0.001,0 0 0|0 0 0
+gripper_right_finger,collision,box,0.03 0.005 0.01,,0.015 0 0|0 0 0
+tcp,visual,MISSING,,,0 0 0|0 0 0
+tcp,collision,MISSING,,,0 0 0|0 0 0

@@ -1,0 +1,8 @@
+link,n_parts,status,visual_path,collision_path
+base_link,5,OK,/home/roarm_m3/roarm_isaac_clean/assets/roarm_m3/meshes/visual/base_link.stl,/home/roarm_m3/roarm_isaac_clean/assets/roarm_m3/meshes/collision/base_link.stl
+link_1,2,OK,/home/roarm_m3/roarm_isaac_clean/assets/roarm_m3/meshes/visual/link_1.stl,/home/roarm_m3/roarm_isaac_clean/assets/roarm_m3/meshes/collision/link_1.stl
+link_2,2,OK,/home/roarm_m3/roarm_isaac_clean/assets/roarm_m3/meshes/visual/link_2.stl,/home/roarm_m3/roarm_isaac_clean/assets/roarm_m3/meshes/collision/link_2.stl
+link_3,3,OK,/home/roarm_m3/roarm_isaac_clean/assets/roarm_m3/meshes/visual/link_3.stl,/home/roarm_m3/roarm_isaac_clean/assets/roarm_m3/meshes/collision/link_3.stl
+link_4,1,OK,/home/roarm_m3/roarm_isaac_clean/assets/roarm_m3/meshes/visual/link_4.stl,/home/roarm_m3/roarm_isaac_clean/assets/roarm_m3/meshes/collision/link_4.stl
+link_5,1,OK,/home/roarm_m3/roarm_isaac_clean/assets/roarm_m3/meshes/visual/link_5.stl,/home/roarm_m3/roarm_isaac_clean/assets/roarm_m3/meshes/collision/link_5.stl
+gripper_base,3,OK,/home/roarm_m3/roarm_isaac_clean/assets/roarm_m3/meshes/visual/gripper_base.stl,/home/roarm_m3/roarm_isaac_clean/assets/roarm_m3/meshes/collision/gripper_base.stl
