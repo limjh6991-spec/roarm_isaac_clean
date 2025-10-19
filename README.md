@@ -1,213 +1,524 @@
-# RoArm M3 + Isaac Sim 5.0 - Production Ready
+# RoArm-M3 Isaac Sim Integration# RoArm M3 + Isaac Sim 5.0 - Production Ready
 
-**생성일**: 2025년 10월 15일  
-**최종 업데이트**: 2025년 10월 18일  
-**상태**: ✅ **프리플라이트 전체 PASS** + 🧠 **온톨로지 시스템 구축** + 🔧 **URDF 표준화 진행 중**  
-**목적**: RoArm M3 로봇팔을 Isaac Sim 5.0에서 처음부터 올바르게 설정하고 강화학습 수행
+
+
+**NVIDIA Isaac Sim 5.0 기반 RoArm-M3 로봇 팔 시뮬레이션 및 강화학습 프로젝트****생성일**: 2025년 10월 15일  
+
+**최종 업데이트**: 2025년 10월 19일 (오후)  
+
+[![Isaac Sim](https://img.shields.io/badge/Isaac%20Sim-5.0-green)](https://developer.nvidia.com/isaac-sim)**상태**: ✅ **프리플라이트 PASS** + 🧠 **온톨로지 구축** + 🎯 **멀티-프리미티브 URDF** + 🤖 **강화학습 환경 완료**  
+
+[![Python](https://img.shields.io/badge/Python-3.10-blue)](https://www.python.org/)**목적**: RoArm M3 로봇팔을 Isaac Sim 5.0에서 처음부터 올바르게 설정하고 강화학습 수행
+
+[![RL](https://img.shields.io/badge/RL-Stable--Baselines3-orange)](https://stable-baselines3.readthedocs.io/)
 
 ---
 
-## 🎉 현재 상태: DevOps 인프라 + 지식 관리 시스템 + URDF 표준화 작업
+---
+
+## 🎉 현재 상태: Pick and Place 강화학습 준비 완료!
+
+## 🎯 프로젝트 개요
 
 ### ✅ 완료된 작업
 
-- [x] **URDF 표준화 프로세스 구축** (2025-10-18) 🆕
-  - Isaac Sim 5.0 호환 경로 형식 확립 (file:// → 절대 경로)
-  - mm→m 단위 변환 스케일 적용 (scale="0.001")
-  - urdf_autopatch_standard.py 자동화 스크립트 개발
-  - Joint origin 보존 로직 구현
-  - 🟡 **진행 중**: STL 파일 Placement 베이크 문제 해결 필요
+RoArm-M3 로봇 팔을 Isaac Sim에서 시뮬레이션하고, Pick and Place 작업을 강화학습으로 학습합니다.
 
-- [x] **온톨로지 기반 지식 관리 시스템** (2025-10-18)
-  - 문제-솔루션 자동 추적
-  - SPARQL 질의로 빠른 정보 검색
-  - 재발 문제 자동 감지
-  - pxr 환경 문제 완전 문서화
+- [x] **Pick and Place 강화학습 환경** (2025-10-19 오전~오후) 🆕
 
-- [x] **프리플라이트 시스템 구축** (2025-10-17)
-  - 3단계 자동 검증: System Check, Isaac Extensions, USD Integrity
-  - 타임아웃 처리, JSON 로그 아카이브, 색상 출력
-  - pip 설치 방식 Isaac Sim 환경 완벽 지원
-  - Isaac 번들 pxr 사용 (pip install usd-core 금지)
-  
-- [x] **USD 무결성 검사 강화** (2025-10-17)
-  - Stage metadata 검증 (metersPerUnit, upAxis)
+**주요 기능**:  - ✅ RoArmPickPlaceEnv 환경 구현 (400+ lines)
+
+- ✅ Isaac Sim 5.0 URDF Import (공식 문서 기반)  - ✅ Observation(15) / Action(8) space 정의
+
+- ✅ Pick and Place 환경 구현 (기본 + Isaac Assets)  - ✅ Distance-based + Success bonus reward 설계
+
+- ✅ PPO/SAC 강화학습 알고리즘  - ✅ PPO 학습 스크립트 (Stable-Baselines3)
+
+- ✅ Curriculum Learning 지원  - ✅ TensorBoard 로깅, 체크포인트 자동 저장
+
+- ✅ TensorBoard 모니터링  - ✅ 데모 스크립트로 환경 검증 가능
+
+- ✅ Isaac Assets (YCB 물체, 테이블, Warehouse)  - 🎮 **다음**: 데모 실행 → 학습 시작
+
+
+
+---- [x] **멀티-프리미티브 URDF 구현** (2025-10-19 오전) 
+
+  - ✅ STL 추출 문제 근본 해결: 프리미티브 조합(box, cylinder, capsule)으로 형상 구현
+
+## 📁 프로젝트 구조  - ✅ 자동 생성 스크립트 개발 (scripts/generate_multiprim_urdf.py)
+
+  - ✅ 9개 링크, 23개 visual, 10개 collision 프리미티브로 구성
+
+```  - ✅ 파일 크기 10.8 KB (vs. STL 기반 ~50 MB, 4,630배 감소)
+
+roarm_isaac_clean/  - ✅ 100% Isaac Sim 호환, Placement offset 문제 원천 차단
+
+├── envs/                        # RL 환경  - ✅ 그리퍼 비율 조정 (radius 8mm→5mm, length 50mm→35mm)
+
+│   ├── roarm_pick_place_env.py           # 기본 환경
+
+│   └── roarm_pickplace_isaac_assets.py   # Isaac Assets 환경- [x] **URDF 표준화 프로세스 구축** (2025-10-18)
+
+├── scripts/                     # 실행 스크립트  - Isaac Sim 5.0 호환 경로 형식 확립 (file:// → 절대 경로)
+
+│   ├── demo_roarm_fixed.py              # 데모  - mm→m 단위 변환 스케일 적용 (scale="0.001")
+
+│   ├── train_roarm_rl.py                # 기본 RL 학습  - urdf_autopatch_standard.py 자동화 스크립트 개발
+
+│   ├── train_roarm_isaac_assets.py      # Isaac Assets RL 학습  - Joint origin 보존 로직 구현
+
+│   ├── run_train_isaac_assets.sh        # 학습 실행 스크립트  - ✅ **해결**: STL 대신 프리미티브 사용으로 전략 전환
+
+│   └── test_basic_isaac.py              # 기본 테스트
+
+├── docs/                        # 문서- [x] **온톨로지 기반 지식 관리 시스템** (2025-10-18)
+
+│   ├── README.md                        # 문서 인덱스 ⭐  - 문제-솔루션 자동 추적
+
+│   ├── URDF_IMPORT_GUIDE.md             # URDF Import 가이드 ⭐  - SPARQL 질의로 빠른 정보 검색
+
+│   ├── ISAAC_ASSETS_RL_GUIDE.md         # RL 학습 가이드 ⭐  - 재발 문제 자동 감지
+
+│   ├── ISAAC_SIM_PYTHON_GUIDE.md        # Python 스크립팅 가이드 ⭐  - pxr 환경 문제 완전 문서화
+
+│   └── REFERENCES.md                    # 참고 자료
+
+├── assets/                      # URDF/USD/Mesh 파일- [x] **프리플라이트 시스템 구축** (2025-10-17)
+
+│   └── roarm_m3/  - 3단계 자동 검증: System Check, Isaac Extensions, USD Integrity
+
+├── resources/                   # 참고 자료  - 타임아웃 처리, JSON 로그 아카이브, 색상 출력
+
+├── tests/                       # 테스트  - pip 설치 방식 Isaac Sim 환경 완벽 지원
+
+├── devops/                      # DevOps 스크립트  - Isaac 번들 pxr 사용 (pip install usd-core 금지)
+
+├── logs/                        # 작업 로그  
+
+└── goal/                        # 프로젝트 목표- [x] **USD 무결성 검사 강화** (2025-10-17)
+
+```  - Stage metadata 검증 (metersPerUnit, upAxis)
+
   - PhysX Articulation 검증
-  - Rigid Body/Mass/Collision 검증
+
+---  - Rigid Body/Mass/Collision 검증
+
   - Joint DriveAPI 검증
-  - 경고/실패 구분 및 자동 진단
 
-- [x] **Isaac Python 환경 자동 설정**
+## 🚀 빠른 시작  - 경고/실패 구분 및 자동 진단
+
+
+
+### 1. 환경 설정- [x] **Isaac Python 환경 자동 설정**
+
   - pxr 모듈 경로 자동 탐색
-  - PYTHONPATH/LD_LIBRARY_PATH 자동 설정
-  - venv와 표준 설치 모두 지원
+
+```bash  - PYTHONPATH/LD_LIBRARY_PATH 자동 설정
+
+# Isaac Sim 설치 확인  - venv와 표준 설치 모두 지원
+
+ls ~/isaacsim/python.sh
 
 ---
 
-## 📁 프로젝트 구조
+# Python 환경 설정
+
+bash scripts/setup_rl_env.sh## 📁 프로젝트 구조
 
 ```
-roarm_isaac_clean/
+
+```
+
+### 2. 데모 실행 (랜덤 액션)roarm_isaac_clean/
+
 ├── README.md                    # 이 파일
-├── docs/                        # 문서 모음
-│   ├── LESSONS_LEARNED.md      # 이전 프로젝트에서 배운 교훈
-│   ├── SETUP_GUIDE.md          # 단계별 설정 가이드
-│   ├── DEVOPS_GUIDE.md         # DevOps 인프라 가이드 (NEW)
-│   └── TROUBLESHOOTING.md      # 문제 해결 가이드
-├── devops/                      # DevOps 인프라
+
+```bash├── docs/                        # 문서 모음
+
+# 기본 환경 데모│   ├── LESSONS_LEARNED.md      # 이전 프로젝트에서 배운 교훈
+
+PYTHONUNBUFFERED=1 ~/isaacsim/python.sh scripts/demo_roarm_fixed.py \│   ├── SETUP_GUIDE.md          # 단계별 설정 가이드
+
+  --episodes 3 --steps 100│   ├── DEVOPS_GUIDE.md         # DevOps 인프라 가이드
+
+│   ├── MULTI_PRIMITIVE_URDF_STRATEGY.md  # 멀티-프리미티브 전략 (NEW)
+
+# 화면에 로봇과 환경이 표시되고, 랜덤 액션으로 움직입니다│   └── TROUBLESHOOTING.md      # 문제 해결 가이드
+
+```├── devops/                      # DevOps 인프라
+
 │   ├── preflight_all.sh        # 마스터 프리플라이트 (타임아웃, JSON 로깅)
-│   ├── preflight/              # 개별 프리플라이트 검사
-│   │   ├── check_system.sh            # GPU, 드라이버, Vulkan, Python
-│   │   ├── check_isaac_extensions.py  # Isaac 확장 로드 검사
-│   │   └── check_usd_integrity.sh     # USD 스키마 무결성 검사
-│   ├── isaac_python.sh         # pxr 환경 설정 래퍼
+
+**예상 출력**:│   ├── preflight/              # 개별 프리플라이트 검사
+
+```│   │   ├── check_system.sh            # GPU, 드라이버, Vulkan, Python
+
+🎮 RoArm-M3 Pick and Place 데모│   │   ├── check_isaac_extensions.py  # Isaac 확장 로드 검사
+
+  Episodes: 3│   │   └── check_usd_integrity.sh     # USD 스키마 무결성 검사
+
+  Max steps per episode: 100│   ├── isaac_python.sh         # pxr 환경 설정 래퍼
+
 │   ├── setup_isaac_python_env.sh      # 환경 변수 자동 설정
-│   └── diagnose_python_env.sh  # 환경 진단 도구
-├── ontology/                    # 온톨로지 시스템 (NEW)
-│   ├── roarm_domain.ttl        # 코어 온톨로지 (도메인 개념)
-│   ├── instances/              # 실제 문제/솔루션 데이터
-│   │   └── pxr_environment_problem.ttl
-│   ├── queries/                # SPARQL 질의 모음
-│   │   └── diagnostics.sparql
-│   └── README.md               # 온톨로지 사용 가이드
-├── scripts/                     # Python 스크립트
-│   ├── convert_urdf_to_usd.py  # URDF → USD 변환
-│   ├── ontology/               # 온톨로지 도구 (NEW)
-│   │   └── query_ontology.py  # SPARQL 질의 실행
+
+📺 Episode 1/3│   └── diagnose_python_env.sh  # 환경 진단 도구
+
+  - Distance to target: 0.449m├── ontology/                    # 온톨로지 시스템 (NEW)
+
+  📊 Step 50:│   ├── roarm_domain.ttl        # 코어 온톨로지 (도메인 개념)
+
+     - Distance to target: 0.460m│   ├── instances/              # 실제 문제/솔루션 데이터
+
+     - Total reward: -229.58│   │   └── pxr_environment_problem.ttl
+
+  📊 Step 100:│   ├── queries/                # SPARQL 질의 모음
+
+     - Total steps: 100│   │   └── diagnostics.sparql
+
+     - Total reward: -459.43│   └── README.md               # 온톨로지 사용 가이드
+
+     - 상태: ❌ Failed├── scripts/                     # Python 스크립트
+
+│   ├── generate_multiprim_urdf.py     # 멀티-프리미티브 URDF 자동 생성 (NEW)
+
+✅ 데모 완료!│   ├── test_multiprim_isaac.py        # Isaac Sim 자동 테스트 (NEW)
+
+```│   ├── convert_urdf_to_usd.py  # URDF → USD 변환
+
+│   ├── ontology/               # 온톨로지 도구
+
+### 3. RL 학습 시작│   │   └── query_ontology.py  # SPARQL 질의 실행
+
 │   ├── setup/                  # 초기 설정 스크립트
-│   └── usd/                    # USD 관련 유틸리티
-│       └── verify_usd_quick.py # USD 빠른 검증
-├── resources/                   # 수집한 자료 모음
+
+```bash│   └── usd/                    # USD 관련 유틸리티
+
+# Isaac Assets 환경으로 PPO 학습│       └── verify_usd_quick.py # USD 빠른 검증
+
+bash scripts/run_train_isaac_assets.sh├── resources/                   # 수집한 자료 모음
+
 │   ├── isaac_sim/              # Isaac Sim 5.0 관련 자료
-│   ├── roarm_m3/               # RoArm M3 관련 자료
-│   ├── community/              # 커뮤니티 자료
-│   └── RESOURCE_INDEX.md       # 자료 검색 인덱스
+
+# 또는 직접 실행│   ├── roarm_m3/               # RoArm M3 관련 자료
+
+PYTHONUNBUFFERED=1 ~/isaacsim/python.sh scripts/train_roarm_isaac_assets.py \│   ├── community/              # 커뮤니티 자료
+
+  --mode train --timesteps 50000 --algo ppo│   └── RESOURCE_INDEX.md       # 자료 검색 인덱스
+
 ├── scripts/                     # Python 스크립트
-│   ├── convert_urdf_to_usd.py  # URDF → USD 변환
-│   ├── setup/                  # 초기 설정 스크립트
-│   └── usd/                    # USD 관련 유틸리티
+
+# TensorBoard 모니터링 (별도 터미널)│   ├── convert_urdf_to_usd.py  # URDF → USD 변환
+
+tensorboard --logdir logs/│   ├── setup/                  # 초기 설정 스크립트
+
+```│   └── usd/                    # USD 관련 유틸리티
+
 │       └── verify_usd_quick.py # USD 빠른 검증 (NEW)
-├── assets/                      # 로봇 모델 및 에셋
+
+---├── assets/                      # 로봇 모델 및 에셋
+
 │   └── roarm_m3/
-│       ├── urdf/               # URDF 파일
+
+## 📚 문서│       ├── urdf/               # URDF 파일
+
 │       ├── meshes/             # STL 메시 파일
-│       └── usd/                # USD 파일 (변환 결과)
+
+**모든 문서는 [`docs/`](docs/) 폴더에 있습니다.**│       └── usd/                # USD 파일 (변환 결과)
+
 ├── configs/                     # 설정 파일
-│   ├── robot_config.yaml       # 로봇 설정
+
+### 필수 가이드 ⭐│   ├── robot_config.yaml       # 로봇 설정
+
 │   └── training_config.yaml    # 학습 설정
-├── logs/                        # 로그 디렉토리 (NEW)
-│   ├── preflight/              # 프리플라이트 로그 + JSON 아카이브
-│   └── isaac/                  # Isaac Sim 실행 로그
-└── tests/                       # 테스트 코드
+
+1. **[docs/README.md](docs/README.md)** - 문서 인덱스 및 사용 시나리오├── logs/                        # 로그 디렉토리 (NEW)
+
+2. **[docs/URDF_IMPORT_GUIDE.md](docs/URDF_IMPORT_GUIDE.md)** - URDF Import 완전 가이드│   ├── preflight/              # 프리플라이트 로그 + JSON 아카이브
+
+3. **[docs/ISAAC_ASSETS_RL_GUIDE.md](docs/ISAAC_ASSETS_RL_GUIDE.md)** - RL 학습 완전 가이드│   └── isaac/                  # Isaac Sim 실행 로그
+
+4. **[docs/ISAAC_SIM_PYTHON_GUIDE.md](docs/ISAAC_SIM_PYTHON_GUIDE.md)** - Python 스크립팅 가이드└── tests/                       # 테스트 코드
+
     └── test_robot_load.py      # 로봇 로딩 테스트
-```
 
----
+### 시나리오별 가이드```
 
-## 📚 문서 가이드
 
-### ⚠️ CRITICAL: 필독 문서
+
+| 목표 | 읽을 문서 |---
+
+|------|----------|
+
+| 처음 시작 | ISAAC_SIM_PYTHON_GUIDE.md → URDF_IMPORT_GUIDE.md |## 📚 문서 가이드
+
+| RL 학습 시작 | ISAAC_ASSETS_RL_GUIDE.md |
+
+| 커스텀 환경 제작 | ISAAC_ASSETS_RL_GUIDE.md + URDF_IMPORT_GUIDE.md |### ⚠️ CRITICAL: 필독 문서
+
+| 트러블슈팅 | ISAAC_SIM_PYTHON_GUIDE.md (트러블슈팅 섹션) |
 
 1. **`docs/PXR_ENVIRONMENT_GUIDE.md`** 🔴 **최우선 필독**
-   - pxr (USD Python 바인딩) 환경 설정 완전 가이드
+
+---   - pxr (USD Python 바인딩) 환경 설정 완전 가이드
+
    - pip install usd-core 금지 이유 상세 설명
-   - PYTHONPATH + LD_LIBRARY_PATH 설정 방법
+
+## 🎮 주요 스크립트   - PYTHONPATH + LD_LIBRARY_PATH 설정 방법
+
    - 트러블슈팅: ModuleNotFoundError, ImportError 해결
-   - **USD 관련 모든 작업 전 반드시 읽어야 함**
 
-### 필독 문서 (작업 시작 전)
-2. **`docs/DEVOPS_GUIDE.md`** ⭐⭐⭐⭐⭐
-   - DevOps 인프라 완전 가이드
-   - **pxr 모듈 환경 설정 섹션 포함** (⚠️ CRITICAL)
+### 데모   - **USD 관련 모든 작업 전 반드시 읽어야 함**
+
+```bash
+
+# 랜덤 액션 데모 (환경 검증용)### 필독 문서 (작업 시작 전)
+
+PYTHONUNBUFFERED=1 ~/isaacsim/python.sh scripts/demo_roarm_fixed.py \2. **`docs/DEVOPS_GUIDE.md`** ⭐⭐⭐⭐⭐
+
+  --episodes 3 --steps 100   - DevOps 인프라 완전 가이드
+
+```   - **pxr 모듈 환경 설정 섹션 포함** (⚠️ CRITICAL)
+
    - 프리플라이트 시스템 상세 설명
-   - 로그 관리, 트러블슈팅
 
-3. **`docs/LESSONS_LEARNED.md`** ⭐⭐⭐⭐⭐
-   - 이전 프로젝트에서 배운 교훈
-   - **핵심 문제 4가지**: USD CollisionAPI, 원격 GUI, API 변경, **pxr 환경 설정**
+### RL 학습   - 로그 관리, 트러블슈팅
+
+```bash
+
+# PPO 학습 (기본 환경)3. **`docs/LESSONS_LEARNED.md`** ⭐⭐⭐⭐⭐
+
+PYTHONUNBUFFERED=1 ~/isaacsim/python.sh scripts/train_roarm_rl.py \   - 이전 프로젝트에서 배운 교훈
+
+  --mode train --timesteps 50000 --algo ppo   - **핵심 문제 4가지**: USD CollisionAPI, 원격 GUI, API 변경, **pxr 환경 설정**
+
    - 반드시 읽어야 하는 최우선 문서
 
-4. **`docs/ISSUES_AND_SOLUTIONS.md`** ⭐⭐⭐⭐
-   - 8개 이슈 상세 분석 (P0-P3 우선순위)
-   - 각 이슈의 해결 방안 (코드 포함)
+# PPO 학습 (Isaac Assets 환경)
+
+PYTHONUNBUFFERED=1 ~/isaacsim/python.sh scripts/train_roarm_isaac_assets.py \4. **`docs/ISSUES_AND_SOLUTIONS.md`** ⭐⭐⭐⭐
+
+  --mode train --timesteps 50000 --algo ppo   - 8개 이슈 상세 분석 (P0-P3 우선순위)
+
+```   - 각 이슈의 해결 방안 (코드 포함)
+
    - 문제 발생 시 참조
 
-5. **`docs/ENVIRONMENT_STATUS.md`** ⭐⭐⭐
-   - 현재 시스템 환경 상태
-   - 하드웨어/소프트웨어 스펙
-   - 확인 명령어 모음
+### 테스트
 
-6. **`docs/PROJECT_RESTART_SUMMARY.md`** ⭐⭐⭐⭐⭐
+```bash5. **`docs/ENVIRONMENT_STATUS.md`** ⭐⭐⭐
+
+# 기본 Isaac Sim 테스트   - 현재 시스템 환경 상태
+
+PYTHONUNBUFFERED=1 ~/isaacsim/python.sh scripts/test_basic_isaac.py   - 하드웨어/소프트웨어 스펙
+
+```   - 확인 명령어 모음
+
+
+
+---6. **`docs/PROJECT_RESTART_SUMMARY.md`** ⭐⭐⭐⭐⭐
+
    - 프로젝트 재시작 종합 보고서
-   - 단계별 액션 플랜
+
+## 🔧 핵심 기술   - 단계별 액션 플랜
+
    - 타임라인 및 체크리스트
 
-### 참고 문서 (필요시)
-- `~/codex_mcp/README.md` - 이전 프로젝트 개요
-- `~/codex_mcp/docs/STATUS.md` - 이전 프로젝트 최신 상태
+### Isaac Sim 5.0 URDF Import
+
+```python### 참고 문서 (필요시)
+
+from isaacsim.asset.importer.urdf import _urdf- `~/codex_mcp/README.md` - 이전 프로젝트 개요
+
+import omni.kit.commands- `~/codex_mcp/docs/STATUS.md` - 이전 프로젝트 최신 상태
+
 - `~/codex_mcp/docs/comprehensive_analysis_2025-10-15.md` - 종합 분석
+
+import_config = _urdf.ImportConfig()
+
+success, prim_path = omni.kit.commands.execute(---
+
+    "URDFParseAndImportFile",
+
+    urdf_path=urdf_path,## 🚀 빠른 시작
+
+    import_config=import_config,
+
+    get_articulation_root=True,  # ⭐ 필수!### 1. 프리플라이트 검사 실행
+
+)```bash
+
+```# 전체 프리플라이트 (시스템, 확장, USD 무결성)
+
+bash devops/preflight_all.sh
+
+### RL 환경 구현
+
+```python# 개별 검사
+
+from envs.roarm_pick_place_env import RoArmPickPlaceEnv, RoArmPickPlaceEnvCfgbash devops/preflight/check_system.sh
+
+python devops/preflight/check_isaac_extensions.py
+
+cfg = RoArmPickPlaceEnvCfg()bash devops/preflight/check_usd_integrity.sh assets/roarm_m3/usd/roarm_m3.usd
+
+env = RoArmPickPlaceEnv(cfg)```
+
+
+
+obs = env.reset()**성공 시 출력**:
+
+for step in range(100):```
+
+    action = policy(obs)  # 또는 랜덤 액션========================================================================
+
+    obs, reward, done, info = env.step(action)Total: 3  PASS:3  FAIL:0  SKIP:0
+
+```ALL PREFLIGHT CHECKS PASSED!
+
+System ready for Isaac Sim development.
+
+---```
+
+
+
+## 📊 현재 상태### 2. 멀티-프리미티브 URDF 생성 및 테스트 🆕
+
+```bash
+
+| 항목 | 상태 |# URDF 생성 (자동화 스크립트)
+
+|------|------|python scripts/generate_multiprim_urdf.py --output assets/roarm_m3/urdf/roarm_m3_multiprim.urdf
+
+| URDF Import | ✅ 완료 (Isaac Sim 5.0) |
+
+| 기본 환경 | ✅ 완료 |# 출력:
+
+| Isaac Assets 환경 | ✅ 완료 |# ✅ URDF 생성 완료
+
+| 데모 실행 | ✅ 완료 (3 episodes × 100 steps) |# 📊 통계:
+
+| RL 학습 스크립트 | ✅ 완료 (PPO/SAC) |#   - 총 링크: 9개
+
+| 문서화 | ✅ 완료 |#   - 총 조인트: 9개
+
+| Easy Mode 학습 | 🟡 진행 중 |#   - Visual 프리미티브: 23개
+
+#   - Collision 프리미티브: 10개
+
+---#   - 파일 크기: 10.8 KB
+
+
+
+## 🐛 트러블슈팅# Isaac Sim 자동 테스트
+
+~/isaac-sim.sh -m scripts/test_multiprim_isaac.py
+
+### 문제: URDF import 실패
+
+**해결**: [docs/URDF_IMPORT_GUIDE.md](docs/URDF_IMPORT_GUIDE.md) 참고# 수동 테스트 (Isaac Sim GUI)
+
+~/isaac-sim.sh &
+
+### 문제: Python 스크립트 출력이 안 보임# File → Import → URDF → 경로: /home/roarm_m3/roarm_isaac_clean/assets/roarm_m3/urdf/roarm_m3_multiprim.urdf
+
+**해결**: `PYTHONUNBUFFERED=1` 환경 변수 사용  # Joint 슬라이더로 동작 확인
+
+자세한 내용: [docs/ISAAC_SIM_PYTHON_GUIDE.md](docs/ISAAC_SIM_PYTHON_GUIDE.md)```
+
+
+
+### 문제: 학습이 안 됨**멀티-프리미티브 방식 특징**:
+
+**해결**: [docs/ISAAC_ASSETS_RL_GUIDE.md](docs/ISAAC_ASSETS_RL_GUIDE.md)의 트러블슈팅 섹션- ✅ STL 파일 불필요 (Placement offset 문제 원천 차단)
+
+- ✅ 파일 크기 10.8 KB (vs. STL 기반 ~50 MB)
+
+---- ✅ 100% Isaac Sim 네이티브 호환
+
+- ✅ 물리 시뮬레이션 안정성 향상
+
+## 📖 참고 자료- ✅ 링크당 3-8개 프리미티브로 실루엣 재현
+
+
+
+- [Isaac Sim 공식 문서](https://docs.omniverse.nvidia.com/isaacsim/latest/)### 3. URDF → USD 변환
+
+- [Stable Baselines3 문서](https://stable-baselines3.readthedocs.io/)```bash
+
+- [URDF 명세](http://wiki.ros.org/urdf)source ~/isaacsim-venv/bin/activate
+
+- [더 많은 자료](docs/REFERENCES.md)python scripts/convert_urdf_to_usd.py
+
+```
 
 ---
 
-## 🚀 빠른 시작
+### 4. USD 빠른 검증
 
-### 1. 프리플라이트 검사 실행
-```bash
-# 전체 프리플라이트 (시스템, 확장, USD 무결성)
-bash devops/preflight_all.sh
+## 📝 주요 변경 사항```bash
 
-# 개별 검사
-bash devops/preflight/check_system.sh
-python devops/preflight/check_isaac_extensions.py
-bash devops/preflight/check_usd_integrity.sh assets/roarm_m3/usd/roarm_m3.usd
-```
-
-**성공 시 출력**:
-```
-========================================================================
-Total: 3  PASS:3  FAIL:0  SKIP:0
-ALL PREFLIGHT CHECKS PASSED!
-System ready for Isaac Sim development.
-```
-
-### 2. URDF → USD 변환
-```bash
-source ~/isaacsim-venv/bin/activate
-python scripts/convert_urdf_to_usd.py
-```
-
-### 3. USD 빠른 검증
-```bash
 python scripts/usd/verify_usd_quick.py assets/roarm_m3/usd/roarm_m3.usd
-```
 
-### 4. 온톨로지 지식 검색 🆕
-```bash
-# rdflib, networkx, matplotlib 설치 (최초 1회)
-pip install rdflib networkx matplotlib
+### 2025-10-19```
 
-# 프로젝트 상태 조회
+- ✅ Isaac Sim 5.0 URDF Import 문제 해결
+
+  - `omni.isaac.urdf` → `isaacsim.asset.importer.urdf`### 5. 온톨로지 지식 검색 🆕
+
+  - `get_articulation_root=True` 파라미터 추가```bash
+
+- ✅ stdout buffering 문제 해결 (`PYTHONUNBUFFERED=1`)# rdflib, networkx, matplotlib 설치 (최초 1회)
+
+- ✅ 데모 실행 성공 (3 episodes × 100 steps)pip install rdflib networkx matplotlib
+
+- ✅ 프로젝트 정리 (312 → 188 파일, -40%)
+
+- ✅ 완전한 문서화 완료# 프로젝트 상태 조회
+
 python scripts/ontology/query_ontology.py --query project_status
 
-# pxr 문제 솔루션 찾기
-python scripts/ontology/query_ontology.py --query pxr_solutions
+---
 
-# 사용 가능한 질의 목록
-python scripts/ontology/query_ontology.py --list-queries
+# pxr 문제 솔루션 찾기
+
+## 🎯 다음 단계python scripts/ontology/query_ontology.py --query pxr_solutions
+
+
+
+1. **Easy Mode RL 학습** (진행 중)# 사용 가능한 질의 목록
+
+   - PPO 50K timestepspython scripts/ontology/query_ontology.py --list-queries
+
+   - 성공률 60%+ 목표
 
 # 지식 그래프 시각화 (PNG 생성)
-python scripts/ontology/visualize_graph.py --focus pxr_environment_problem --output pxr_graph.png
-python scripts/ontology/visualize_graph.py --output full_graph.png
 
-# 브라우저로 시각화 보기 (추천!) 🆕
-python scripts/ontology/view_ontology.py
-# → http://localhost:8000 자동으로 열림
+2. **Curriculum Learning 적용**python scripts/ontology/visualize_graph.py --focus pxr_environment_problem --output pxr_graph.png
+
+   - 3단계: Easy → Medium → Hardpython scripts/ontology/visualize_graph.py --output full_graph.png
+
+
+
+3. **성능 최적화**# 브라우저로 시각화 보기 (추천!) 🆕
+
+   - 하이퍼파라미터 튜닝python scripts/ontology/view_ontology.py
+
+   - 다양한 RL 알고리즘 실험# → http://localhost:8000 자동으로 열림
+
 # → VS Code Simple Browser에서도 확인 가능
-```
 
-**생성된 시각화**:
+---```
+
+
+
+## 📧 문의**생성된 시각화**:
+
 - 📊 **pxr_subgraph.png**: pxr 문제 중심 서브그래프 (17노드, 29엣지)
-- 📊 **full_ontology_graph.png**: 전체 지식 그래프 (128노드, 127엣지)
+
+- GitHub Issues- 📊 **full_ontology_graph.png**: 전체 지식 그래프 (128노드, 127엣지)
+
+- [docs/README.md](docs/README.md)의 트러블슈팅 섹션 참고
 
 **VS Code에서 이미지 보기**:
 ```bash
@@ -218,7 +529,7 @@ code docs/ontology/pxr_subgraph.png
 code docs/ontology/full_ontology_graph.png
 ```
 
-### 5. GUI로 USD 확인
+### 6. GUI로 USD 확인
 ```bash
 # (작업 예정 - GUI 래퍼 스크립트 추가 예정)
 ```
