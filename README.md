@@ -4,14 +4,23 @@ RoArm-M3 로봇팔의 Pick and Place 작업을 위한 강화학습 환경 (Isaac
 
 ## 📊 현재 상태
 
-**Training Phase**: Phase 0 (Easy Mode)  
-**Total Steps**: 50K  
-**달성 마일스톤**: REACH (+5.0) ✅
+**Training Phase**: Phase 0 (Easy Mode) - **URDF 수정 필요** 🚨  
+**Total Steps**: 100K  
+**달성 마일스톤**: REACH (+5.0) 12회 ✅
 
 ### 학습 성과
-- ep_rew_mean: -6.01 → -4.21 (30% 개선)
+- ep_rew_mean: +916 → -6.01 → -5.66 (안정화)
+- EV: 0.00006 → 0.283 (4,717배 개선)
 - Dense Reward(실패) → Sparse Reward(안정) → Shaped-Sparse(현재)
-- REACH 마일스톤 첫 달성!
+- REACH 마일스톤 달성! ✅
+- **GRIP 마일스톤 미달성** ❌ → URDF 그리퍼 조인트 문제
+
+### ⚠️ 현재 이슈
+**그리퍼 조인트 미작동**
+- 로그: "Joints (8): ['joint_1', 'joint_2', 'joint_3']..." (3개만 출력)
+- 원인: 그리퍼 조인트가 Fixed 또는 잘못 정의됨
+- 해결: URDF 수정 필요 (내일 최우선 작업)
+- 참고: `docs/ISSUE_ANALYSIS_20251019.md`
 
 ## 🎯 보상 시스템 (Shaped-Sparse)
 
@@ -73,9 +82,10 @@ cd ~/roarm_isaac_clean
 - 문제: Success 신호 부족
 
 ### Shaped-Sparse + Curriculum (현재)
-- 50K steps (Phase 0 Easy Mode)
-- 첫 마일스톤: REACH (+5) 달성!
-- 다음: 200K steps 장기 학습 예정
+- 100K steps (Phase 0 Easy Mode)
+- REACH 마일스톤: 12회 달성! ✅
+- **이슈 발견**: GRIP 미달성 (URDF 그리퍼 문제)
+- **다음**: URDF 수정 후 50K 재학습
 
 ## 🔧 기술 스택
 
@@ -91,20 +101,29 @@ cd ~/roarm_isaac_clean
 - `scripts/early_warning_callback.py`: EV/VL 자동 감지 콜백
 - `scripts/test_trained_model.py`: GUI 테스트 스크립트
 
-## 🚧 개선 필요 사항
+## 🚧 개선 필요 사항 (우선순위)
 
-### URDF
-1. 그리퍼 형태: 평행 그리퍼 재설계 필요
-2. Link 크기/비율: 실제 RoArm M3 사양 반영 필요
+### 1. URDF 수정 (최우선!) 🚨
+- **그리퍼 조인트**: Fixed → Prismatic 변경
+- **Joint limits**: 0~25mm 추가
+- **그리퍼 형태**: 평행 그리퍼 재설계
+- **Link 크기**: 실제 RoArm M3 사양 반영
+- **검증**: Isaac Sim 임포트 테스트
 
-### 학습
-1. 추가 마일스톤 달성 (GRIP, LIFT, GOAL, SUCCESS)
-2. Phase 1 Normal Mode 전환 (성공률 ≥60%)
+### 2. 학습 재개 (URDF 수정 후)
+- 50K steps 테스트 학습
+- GRIP 마일스톤 1회 이상 목표
+- 성공 시 1M steps 장기 학습
+
+### 3. Phase 1 전환 (최종)
+- Normal Mode (큐브 25~35cm, 타겟 25~35cm)
+- 성공률 ≥60% 목표
 
 ## 📚 참고 문서
 
+- [내일 할 일](docs/TODO_20251020.md) ⭐
+- [이슈 분석](docs/ISSUE_ANALYSIS_20251019.md)
 - [Training Log](docs/TRAINING_LOG_20251019.md)
-- [RL Best Practices](resources/rl_best_practices.md)
 
 ## 👥 기여자
 

@@ -52,7 +52,8 @@ class RoArmPickPlaceEnvCfg(DirectRLEnvCfg):
     lift_reward_scale: float = 2.0       # (Deprecated)
     move_reward_scale: float = 2.0       # (Deprecated)
     success_reward: float = 100.0        # Success bonus
-    success_threshold: float = 0.05      # 5cm
+    success_threshold: float = 0.02      # 2cm (5cm → 2cm, 더 정밀한 제어!)
+    success_hold_frames: int = 10        # 10프레임 연속 유지 (5 → 10)
     time_penalty: float = 0.01           # Efficiency penalty
     
     # ═══════════════════════════════════════════════════════════
@@ -61,17 +62,20 @@ class RoArmPickPlaceEnvCfg(DirectRLEnvCfg):
     curriculum_enabled: bool = True      # Curriculum 활성화
     curriculum_phase: int = 0            # 현재 Phase (0: Easy, 1: Normal)
     
-    # Phase 0: Easy Mode (가까운 거리)
-    easy_cube_distance: Tuple[float, float] = (0.10, 0.15)  # 10~15cm
-    easy_target_distance: Tuple[float, float] = (0.20, 0.25)  # 20~25cm
+    # Phase 0: Easy Mode (중간 거리, 15~20cm → 더 도전적!)
+    easy_cube_distance: Tuple[float, float] = (0.15, 0.20)  # 15~20cm (10-15cm → 15-20cm)
+    easy_target_distance: Tuple[float, float] = (0.25, 0.30)  # 25~30cm (20-25cm → 25-30cm)
     
-    # Phase 1: Normal Mode (원래 거리)
-    normal_cube_distance: Tuple[float, float] = (0.25, 0.35)  # 25~35cm
-    normal_target_distance: Tuple[float, float] = (0.25, 0.35)  # 25~35cm
+    # Phase 1: Normal Mode (먼 거리, 35~50cm → 더 어렵게!)
+    normal_cube_distance: Tuple[float, float] = (0.35, 0.50)  # 35~50cm (25-35cm → 35-50cm)
+    normal_target_distance: Tuple[float, float] = (0.35, 0.50)  # 35~50cm (25-35cm → 35-50cm)
     
-    # 자동 승급 조건
-    success_rate_window: int = 200       # 최근 200 에피소드
-    success_rate_threshold: float = 0.60  # 성공률 60% 이상
+    # ═══════════════════════════════════════════════════════════
+    # 📚 자동 승급 조건 (완화됨!)
+    # ═══════════════════════════════════════════════════════════
+    success_rate_window: int = 100       # 최근 100 에피소드 (200 → 100)
+    success_rate_threshold: float = 0.30  # 성공률 30% 이상 (60% → 30%)
+    reach_milestone_threshold: int = 5    # REACH 5회 달성 (10회 → 5회)
 
 
 class RoArmPickPlaceEnv:
@@ -118,13 +122,30 @@ class RoArmPickPlaceEnv:
         self.current_step = 0
         self.max_steps = int(self.cfg.episode_length_s * 60)  # 60 FPS 가정
         
-        # Observation/Action space 정의 (Dense Reward: 더 많은 정보)
-        self.observation_space_dim = 25  # joint(8) + ee(3) + cube(3) + target(3) + ee2cube(3) + cube2target(3) + gripper_width(1) + is_grasped(1)
+        # ═══════════════════════════════════════════════════════════
+        # 📊 Observation/Action Space (개선: EE 기준 상대 좌표)
+        # ═══════════════════════════════════════════════════════════
+        # Observation: 28 dim (EE 기준 상대 좌표!)
+        #   - Joint positions (8)
+        #   - Cube pos relative to EE (3) ← 핵심!
+        #   - Target pos relative to EE (3) ← 핵심!
+        #   - Cube to Target vector (3)
+        #   - EE velocity (3)
+        #   - Cube velocity (3)
+        #   - Gripper width (1)
+        #   - Is grasped (1)
+        #   - Distance to cube (1)
+        #   - Distance cube to target (1)
+        #   - Previous reward (1)
+        self.observation_space_dim = 28
         self.action_space_dim = 8
         
-        # 이전 상태 저장 (보상 계산용)
+        # 이전 상태 저장 (속도 계산 & Dense Reward)
+        self.prev_ee_pos = None
+        self.prev_cube_pos = None
         self.prev_ee_to_cube_dist = None
         self.prev_cube_to_target_dist = None
+        self.previous_reward = 0.0
         
         # ═══════════════════════════════════════════════════════════
         # 🎯 SHAPED-SPARSE: 1회성 이벤트 플래그
@@ -134,9 +155,14 @@ class RoArmPickPlaceEnv:
         self.lifted = False           # 큐브를 들어올림 (5cm)
         self.goal_near = False        # 큐브가 목표에 근접 (8cm)
         
-        # m 프레임 히스테리시스 카운터
+        # 프레임 히스테리시스 카운터
         self.grip_frames = 0          # 연속 그립 프레임
         self.success_frames = 0       # 연속 성공 프레임
+        
+        # 마일스톤 카운터 (에피소드 통계용)
+        self.episode_reach_count = 0
+        self.episode_grip_count = 0
+        self.episode_lift_count = 0
         
         # ═══════════════════════════════════════════════════════════
         # 📚 CURRICULUM: 성공률 추적
@@ -146,10 +172,17 @@ class RoArmPickPlaceEnv:
         print(f"\n📊 환경 정보:")
         print(f"  - Observation dim: {self.observation_space_dim}")
         print(f"  - Action dim: {self.action_space_dim}")
-        print(f"  - Max steps: {self.max_steps}")
-        print(f"  - Success threshold: {self.cfg.success_threshold}m")
+        print(f"  - Episode length: {self.cfg.episode_length_s}s * 60 FPS = {self.max_steps} steps")
+        print(f"  - Success threshold: {self.cfg.success_threshold}m ({int(self.cfg.success_threshold*100)}cm)")
+        print(f"  - Success hold frames: {self.cfg.success_hold_frames} (연속 유지)")
         print(f"  - Reward type: Shaped-Sparse (게이팅 + 1회성 이벤트)")
         print(f"  - Curriculum: Phase {self.cfg.curriculum_phase} ({'Easy' if self.cfg.curriculum_phase == 0 else 'Normal'})")
+        if self.cfg.curriculum_phase == 0:
+            print(f"    • Cube: {self.cfg.easy_cube_distance[0]*100:.0f}-{self.cfg.easy_cube_distance[1]*100:.0f}cm")
+            print(f"    • Target: {self.cfg.easy_target_distance[0]*100:.0f}-{self.cfg.easy_target_distance[1]*100:.0f}cm")
+        else:
+            print(f"    • Cube: {self.cfg.normal_cube_distance[0]*100:.0f}-{self.cfg.normal_cube_distance[1]*100:.0f}cm")
+            print(f"    • Target: {self.cfg.normal_target_distance[0]*100:.0f}-{self.cfg.normal_target_distance[1]*100:.0f}cm")
     
     def _load_robot(self):
         """로봇 URDF 로드"""
@@ -340,48 +373,96 @@ class RoArmPickPlaceEnv:
         self.grip_frames = 0
         self.success_frames = 0
         
+        # 마일스톤 카운터 리셋
+        self.episode_reach_count = 0
+        self.episode_grip_count = 0
+        self.episode_lift_count = 0
+        
         # 초기 observation 반환
         return self._get_observation()
     
     def _get_observation(self) -> np.ndarray:
-        """현재 상태 관측 (Dense Reward: 더 많은 정보)"""
-        # Joint positions (6 revolute + 2 prismatic)
+        """
+        현재 상태 관측 (개선: EE 기준 상대 좌표!)
+        
+        핵심 개선:
+        1. 월드 좌표 → EE 기준 상대 좌표 변환
+        2. 속도 정보 추가 (EE, Cube)
+        3. 디버깅 정보 추가
+        """
+        # ═══════════════════════════════════════════════════════════
+        # 1. 기본 정보 수집 (월드 좌표)
+        # ═══════════════════════════════════════════════════════════
         joint_positions = self.robot.get_joint_positions()[:8]
+        ee_pos = self._get_ee_position()  # 월드 좌표
+        cube_pos, _ = self.cube.get_world_pose()  # 월드 좌표
+        target_pos = np.array(self.cfg.target_position)  # 월드 좌표 (고정)
         
-        # End-effector position
-        ee_pos = self._get_ee_position()
+        # ═══════════════════════════════════════════════════════════
+        # 2. EE 기준 상대 좌표 변환 (핵심!)
+        # ═══════════════════════════════════════════════════════════
+        # 정책이 학습하기 쉽도록 "EE에서 본" 큐브/타겟 위치 제공
+        cube_relative_to_ee = cube_pos - ee_pos       # EE → Cube 벡터
+        target_relative_to_ee = target_pos - ee_pos   # EE → Target 벡터
+        cube_to_target = target_pos - cube_pos        # Cube → Target 벡터
         
-        # Cube position
-        cube_pos, _ = self.cube.get_world_pose()
+        # ═══════════════════════════════════════════════════════════
+        # 3. 속도 계산 (시간적 정보)
+        # ═══════════════════════════════════════════════════════════
+        if self.prev_ee_pos is not None:
+            ee_velocity = (ee_pos - self.prev_ee_pos) * 60.0  # 60 FPS 가정
+            cube_velocity = (cube_pos - self.prev_cube_pos) * 60.0
+        else:
+            ee_velocity = np.zeros(3)
+            cube_velocity = np.zeros(3)
         
-        # Target position
-        target_pos = np.array(self.cfg.target_position)
+        self.prev_ee_pos = ee_pos.copy()
+        self.prev_cube_pos = cube_pos.copy()
         
-        # EE → Cube vector
-        ee_to_cube = cube_pos - ee_pos
-        
-        # Cube → Target vector
-        cube_to_target = target_pos - cube_pos
-        
-        # Gripper width (distance between fingers)
+        # ═══════════════════════════════════════════════════════════
+        # 4. 그리퍼 상태
+        # ═══════════════════════════════════════════════════════════
         gripper_width = joint_positions[6] + joint_positions[7]
         
-        # Is grasped (간단한 휴리스틱: EE가 큐브 가까이 + 그리퍼 닫힘)
-        ee_to_cube_dist = np.linalg.norm(ee_to_cube)
-        is_grasped = 1.0 if (ee_to_cube_dist < 0.08 and gripper_width < 0.02) else 0.0
+        # Is grasped: EE 근처 + 그리퍼 닫힘 (임계치 완화)
+        ee_to_cube_dist = np.linalg.norm(cube_relative_to_ee)
+        is_grasped = 1.0 if (ee_to_cube_dist < 0.08 and gripper_width < 0.025) else 0.0
         
-        # Observation 벡터 생성 (25 dim)
+        # ═══════════════════════════════════════════════════════════
+        # 5. 거리 정보
+        # ═══════════════════════════════════════════════════════════
+        dist_to_cube = ee_to_cube_dist
+        dist_cube_to_target = np.linalg.norm(cube_to_target)
+        
+        # ═══════════════════════════════════════════════════════════
+        # 6. Observation 벡터 구성 (28 dim)
+        # ═══════════════════════════════════════════════════════════
         obs = np.concatenate([
-            joint_positions[:6],      # Joint positions (6)
-            joint_positions[6:8],     # Gripper state (2)
-            ee_pos,                   # EE position (3)
-            cube_pos,                 # Cube position (3)
-            target_pos,               # Target position (3)
-            ee_to_cube,               # EE → Cube vector (3)
-            cube_to_target,           # Cube → Target vector (3)
-            [gripper_width],          # Gripper width (1)
-            [is_grasped],             # Is grasped (1)
+            joint_positions[:6],          # Joint positions (6)
+            joint_positions[6:8],         # Gripper state (2)
+            cube_relative_to_ee,          # Cube relative to EE (3) ← 핵심!
+            target_relative_to_ee,        # Target relative to EE (3) ← 핵심!
+            cube_to_target,               # Cube to Target (3)
+            ee_velocity,                  # EE velocity (3)
+            cube_velocity,                # Cube velocity (3)
+            [gripper_width],              # Gripper width (1)
+            [is_grasped],                 # Is grasped (1)
+            [dist_to_cube],               # Distance to cube (1)
+            [dist_cube_to_target],        # Distance cube to target (1)
+            [self.previous_reward],       # Previous reward (1)
         ])
+        
+        # ═══════════════════════════════════════════════════════════
+        # 7. 디버깅 (첫 스텝에만)
+        # ═══════════════════════════════════════════════════════════
+        if self.current_step == 0:
+            print(f"\n🔍 관측 신호 점검:")
+            print(f"  - Observation dim: {len(obs)} (expected: {self.observation_space_dim})")
+            print(f"  - EE pos (world): {ee_pos}")
+            print(f"  - Cube pos (world): {cube_pos}")
+            print(f"  - Cube relative to EE: {cube_relative_to_ee}")
+            print(f"  - Distance to cube: {dist_to_cube:.3f}m")
+            print(f"  - Is grasped: {is_grasped}")
         
         return obs
     
@@ -438,8 +519,8 @@ class RoArmPickPlaceEnv:
         # 로봇에 position 명령 전송 (직접 설정)
         self.robot.set_joint_positions(target_positions)
         
-        # Physics 시뮬레이션 스텝
-        self.world.step(render=True)
+        # Physics 시뮬레이션 스텝 (학습 시 render=False 권장)
+        self.world.step(render=False)
         
         # 현재 상태 관측
         obs = self._get_observation()
@@ -456,10 +537,18 @@ class RoArmPickPlaceEnv:
         # ═══════════════════════════════════════════════════════════
         # 📊 로깅: 이벤트 및 진행 상황 추적
         # ═══════════════════════════════════════════════════════════
-        cube_to_target_dist = np.linalg.norm(obs[20:23])
+        # 🔧 BUG FIX: 올바른 인덱스 사용 (14:17 = cube_to_target 벡터)
+        # 더 신뢰도 높은 방법: 월드 좌표로 재계산
+        cube_pos, _ = self.cube.get_world_pose()
+        target_pos = np.array(self.cfg.target_position)
+        cube_to_target_dist = float(np.linalg.norm(target_pos - cube_pos))
         
         # 성공률 계산 (최근 에피소드 기준)
         success_rate = np.mean(self.episode_successes) if len(self.episode_successes) > 0 else 0.0
+        
+        # 그리퍼 정보 추가
+        gripper_width = obs[23]
+        is_grasped = obs[24]
         
         info = {
             "step": self.current_step,
@@ -472,6 +561,18 @@ class RoArmPickPlaceEnv:
                 "lifted": self.lifted,
                 "goal_near": self.goal_near,
                 "success": cube_to_target_dist < self.cfg.success_threshold,
+            },
+            # 마일스톤 카운터
+            "milestone_counts": {
+                "reach": self.episode_reach_count,
+                "grip": self.episode_grip_count,
+                "lift": self.episode_lift_count,
+            },
+            # 그리퍼 정보
+            "gripper": {
+                "width": float(gripper_width),
+                "is_grasped": float(is_grasped),
+                "grip_frames": self.grip_frames,
             },
             # 종료 사유
             "done_reason": "ongoing" if not done else (
@@ -488,108 +589,159 @@ class RoArmPickPlaceEnv:
     
     def _calculate_reward(self, obs: np.ndarray) -> float:
         """
-        🎯 SHAPED-SPARSE REWARD: 게이팅 + 1회성 마일스톤 보상
+        🎯 개선된 HYBRID REWARD: Shaped-Sparse + Dense
         
-        전문가 최종 권장 사항 적용:
-        1. 게이팅 시스템: grasp_valid 체크로 보상 폭발 차단
-        2. 1회성 이벤트: 각 마일스톤은 한 번만 보상
-        3. m 프레임 히스테리시스: 노이즈 필터링
+        개선 사항:
+        1. Dense Reward 추가: 매 스텝 거리 기반 피드백
+        2. Shaped-Sparse: 마일스톤 이벤트 보상 유지
+        3. 게이팅 강화: grasp_valid 체크
         
         보상 구조:
-        - 근접 (+5): EE가 큐브 5cm 이내 진입 (1회)
-        - 그립 (+10): 유효 그립 3프레임 유지 (1회, 게이팅)
-        - 리프트 (+15): 큐브 5cm 이상 들어올림 (1회, 게이팅)
-        - 목표 근접 (+20): 큐브가 목표 8cm 이내 (1회, 게이팅)
-        - Success (+100): 목표 5cm 이내 5프레임 유지 (1회)
-        - Time penalty (-0.01): 효율성 유도
+        A. Dense Reward (매 스텝):
+          - EE → Cube 접근: -distance * 3.0
+          - Cube → Target 접근: -distance * 2.0 (grasp_valid 시)
+          - 진전 보너스: +0.5 (거리 줄어들 때)
+        
+        B. Shaped-Sparse (1회성):
+          - 근접 (+5): EE가 큐브 5cm 이내
+          - 그립 (+10): 유효 그립 3프레임
+          - 리프트 (+15): 큐브 5cm 이상
+          - 목표 근접 (+20): 큐브가 목표 8cm 이내
+          - Success (+100): 목표 5cm 이내
+        
+        C. Penalty:
+          - Time penalty: -0.01
         """
-        # 관찰에서 필요한 값 추출
-        ee_pos = obs[8:11]
-        cube_pos = obs[11:14]
-        target_pos = obs[14:17]
-        ee_to_cube_vec = obs[17:20]
-        cube_to_target_vec = obs[20:23]
+        # 관찰에서 필요한 값 추출 (개선된 28 dim 관측)
+        cube_relative_to_ee = obs[8:11]    # EE 기준 상대 좌표
+        target_relative_to_ee = obs[11:14]  # EE 기준 상대 좌표
+        cube_to_target = obs[14:17]
         gripper_width = obs[23]
         is_grasped = obs[24]
+        dist_to_cube = obs[25]
+        dist_cube_to_target = obs[26]
         
-        # 거리 계산
-        ee_to_cube_dist = np.linalg.norm(ee_to_cube_vec)
-        cube_to_target_dist = np.linalg.norm(cube_to_target_vec)
+        # 월드 좌표 재구성 (디버깅용)
+        ee_pos = self._get_ee_position()
+        cube_pos = ee_pos + cube_relative_to_ee
         
         # ═══════════════════════════════════════════════════════════
-        # 🔒 GATING: grasp_valid 체크
+        # 🔒 GATING: grasp_valid 체크 (임계치 완화)
         # ═══════════════════════════════════════════════════════════
-        # 유효 그립 조건: EE 근접 + 그리퍼 닫힘 + 큐브 높이
         grasp_valid = (
-            ee_to_cube_dist < 0.08 and      # EE가 8cm 이내
-            gripper_width < 0.02 and        # 그리퍼가 닫힘
+            dist_to_cube < 0.08 and         # EE가 8cm 이내
+            gripper_width < 0.025 and       # 그리퍼가 닫힘 (0.02 → 0.025)
             cube_pos[2] > 0.03              # 큐브가 바닥 위
         )
         
-        # 히스테리시스: 연속 프레임 카운트
         if grasp_valid:
             self.grip_frames += 1
         else:
             self.grip_frames = 0
         
         # ═══════════════════════════════════════════════════════════
-        # 🎁 SHAPED-SPARSE REWARDS (1회성 이벤트)
+        # 🎁 A. DENSE REWARD (Δ형 - 개선량 기반)
         # ═══════════════════════════════════════════════════════════
         reward = 0.0
         
-        # 1️⃣ 근접 보상 (+5): EE가 큐브에 처음 근접
-        if not self.first_reach and ee_to_cube_dist < 0.05:
-            reward += 5.0
-            self.first_reach = True
-            print(f"  🎯 Milestone: REACH! (+5.0)")
+        # Time penalty 완화 (기존 0.01 → 0.001)
+        reward -= 0.001
         
-        # 2️⃣ 그립 보상 (+10): 유효 그립 3프레임 유지 [게이팅]
-        if not self.valid_grip and grasp_valid and self.grip_frames >= 3:
+        # 1. EE → Cube 접근 보상 (개선량 기반)
+        if self.prev_ee_to_cube_dist is not None:
+            ee_progress = self.prev_ee_to_cube_dist - dist_to_cube
+            reward += 5.0 * ee_progress  # 가까워지면 +, 멀어지면 -
+        
+        # 2. Cube → Target 접근 보상 (grasp_valid 시만, 개선량 기반)
+        if grasp_valid and self.prev_cube_to_target_dist is not None:
+            cube_progress = self.prev_cube_to_target_dist - dist_cube_to_target
+            reward += 4.0 * cube_progress  # 가까워지면 +, 멀어지면 -
+        
+        # 거리 이력 업데이트
+        self.prev_ee_to_cube_dist = dist_to_cube
+        self.prev_cube_to_target_dist = dist_cube_to_target
+        
+        # ═══════════════════════════════════════════════════════════
+        # 🎁 B. SHAPED-SPARSE REWARDS (1회성 이벤트, 상향 조정)
+        # ═══════════════════════════════════════════════════════════
+        
+        # 1️⃣ 근접 보상 (+10): EE가 큐브에 처음 근접
+        if not self.first_reach and dist_to_cube < 0.05:
             reward += 10.0
+            self.first_reach = True
+            self.episode_reach_count += 1
+            print(f"  🎯 Milestone: REACH! (+10.0)")
+        
+        # 2️⃣ 그립 보상 (+40): 유효 그립 3프레임 유지 [게이팅]
+        if not self.valid_grip and grasp_valid and self.grip_frames >= 3:
+            reward += 40.0
             self.valid_grip = True
-            print(f"  ✊ Milestone: GRIP! (+10.0)")
+            self.episode_grip_count += 1
+            print(f"  ✊ Milestone: GRIP! (+40.0)")
         
-        # 3️⃣ 리프트 보상 (+15): 큐브 5cm 이상 들어올림 [게이팅]
+        # 3️⃣ 리프트 보상 (+50): 큐브 5cm 이상 들어올림 [게이팅]
         if not self.lifted and grasp_valid and cube_pos[2] > 0.05:
-            reward += 15.0
+            reward += 50.0
             self.lifted = True
-            print(f"  ⬆️ Milestone: LIFT! (+15.0)")
+            self.episode_lift_count += 1
+            print(f"  ⬆️ Milestone: LIFT! (+50.0)")
         
-        # 4️⃣ 목표 근접 보상 (+20): 큐브가 목표 8cm 이내 [게이팅]
-        if not self.goal_near and grasp_valid and cube_to_target_dist < 0.08:
-            reward += 20.0
-            self.goal_near = True
-            print(f"  🎯 Milestone: GOAL NEAR! (+20.0)")
+        # 4️⃣ 목표 근접 보상 (제거): LIFT와 SUCCESS 사이 간격이 크지 않아 제거
+        # if not self.goal_near and grasp_valid and dist_cube_to_target < 0.08:
+        #     reward += 20.0
+        #     self.goal_near = True
+        #     print(f"  🎯 Milestone: GOAL NEAR! (+20.0)")
         
-        # 5️⃣ Success 보상 (+100): 목표 5cm 이내 5프레임 유지
-        if cube_to_target_dist < self.cfg.success_threshold:
+        # 5️⃣ Success 보상 (+100): 목표 threshold 이내 N프레임 연속 유지
+        if dist_cube_to_target < self.cfg.success_threshold:
             self.success_frames += 1
-            if self.success_frames >= 5:
-                reward += self.cfg.success_reward  # +100
-                print(f"  🏆 Milestone: SUCCESS! (+100.0)")
+            if self.success_frames >= self.cfg.success_hold_frames:
+                reward += 100.0
+                print(f"  🏆 Milestone: SUCCESS! (+100.0) [{self.success_frames} frames]")
         else:
             self.success_frames = 0
         
-        # Time Penalty: 효율성 유도 (매 스텝 -0.01)
-        time_penalty = -self.cfg.time_penalty
-        reward += time_penalty
+        # ═══════════════════════════════════════════════════════════
+        # 🎁 C. REWARD CLIPPING (1스텝 보상 제한)
+        # ═══════════════════════════════════════════════════════════
+        # 스파이크 보상 제외하고 Dense 보상만 클램핑
+        if reward < 90.0:  # 큰 이벤트 보상 제외
+            reward = np.clip(reward, -2.0, 2.0)
+        
+        # Previous reward 저장 (관측에 포함)
+        self.previous_reward = reward
         
         return reward
     
     def _check_done(self, obs: np.ndarray) -> bool:
-        """에피소드 종료 조건 + 성공률 추적"""
-        # 큐브 위치
-        cube_pos = obs[11:14]
+        """에피소드 종료 조건 + 성공률 추적
         
-        # Cube → Target 거리
-        cube_to_target_vec = obs[20:23]
-        cube_to_target_dist = np.linalg.norm(cube_to_target_vec)
+        ✅ SUCCESS 조건 강화:
+        - threshold 이내 + N프레임 연속 유지 필수!
+        """
+        # 🔧 BUG FIX: 월드 좌표로 정확하게 재계산
+        cube_pos, _ = self.cube.get_world_pose()
+        target_pos = np.array(self.cfg.target_position)
+        cube_to_target_dist = float(np.linalg.norm(target_pos - cube_pos))
         
-        # 타겟 도달
+        # 관측 벡터의 큐브 위치도 참고 (디버깅용)
+        cube_pos_obs = obs[11:14]
+        
+        # ═══════════════════════════════════════════════════════════
+        # ✅ SUCCESS 조건: threshold 이내 + N프레임 연속 유지
+        # ═══════════════════════════════════════════════════════════
         if cube_to_target_dist < self.cfg.success_threshold:
-            print(f"  ✅ SUCCESS! Distance: {cube_to_target_dist:.3f}m")
-            self._record_success(True)
-            return True
+            # 아직 N프레임 유지 안 됨 → 계속 진행
+            if self.success_frames < self.cfg.success_hold_frames:
+                # 진행 상황 로그 (매 프레임마다는 아니고 5프레임마다)
+                if self.success_frames % 5 == 0 and self.success_frames > 0:
+                    print(f"  ⏳ Holding... {self.success_frames}/{self.cfg.success_hold_frames} frames (dist: {cube_to_target_dist:.3f}m)")
+                return False  # 아직 종료하지 않음!
+            else:
+                # N프레임 유지 완료 → SUCCESS!
+                print(f"  ✅ SUCCESS CONFIRMED! Distance: {cube_to_target_dist:.3f}m (held {self.success_frames} frames)")
+                self._record_success(True)
+                return True
         
         # 최대 스텝 도달
         if self.current_step >= self.max_steps:
@@ -600,6 +752,8 @@ class RoArmPickPlaceEnv:
         # 물체가 테이블 밖으로 떨어짐 (Z < 0)
         if cube_pos[2] < -0.1:
             print(f"  ❌ Cube fell off table (Z: {cube_pos[2]:.3f}m)")
+            self._record_success(False)
+            return True
             self._record_success(False)
             return True
         
