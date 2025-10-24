@@ -16,7 +16,9 @@ ENV/
 .venv
 
 # IDE
-.vscode/
+.vscode/*
+!.vscode/tasks.json
+!.vscode/launch.json
 .idea/
 *.swp
 *.swo
@@ -34,6 +36,12 @@ logs/*.log
 logs/*.jsonl
 logs/*.json
 logs/*.prom
+logs/rl_training_curriculum/checkpoints/*.zip
+logs/rl_training_curriculum/checkpoints/*.pkl
+logs/rl_training_curriculum/final_model/
+logs/rl_training_curriculum/final_model_*/
+logs/rl_training_curriculum/tensorboard/
+logs/rl_training_curriculum/*.csv
 
 # OS
 .DS_Store
@@ -52,6 +60,9 @@ Thumbs.db
 *.obj
 *.fbx
 *.dae
+*.urdf.bak
+*.urdf~
+*_backup_*.urdf
 
 # Jupyter
 .ipynb_checkpoints/
@@ -64,3 +75,17 @@ htmlcov/
 
 # 환경 변수 스냅샷 (민감 정보 포함 가능)
 logs/isaac/env_*.txt
+
+# Environment
+.env.local
+envs/*/
+*.pyc
+__pycache__/
+
+# Logs
+logs/*.log
+logs/backup/
+
+# Temporary
+/tmp/
+*.tmp
