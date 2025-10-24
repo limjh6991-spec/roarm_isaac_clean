@@ -48,6 +48,16 @@ except ImportError:
     EarlyWarningCallback = None
     EARLY_WARNING_AVAILABLE = False
 
+# Training progress callback
+try:
+    from scripts.rl.training_callbacks import TrainingProgressCallback, CurriculumCallback
+    TRAINING_CALLBACKS_AVAILABLE = True
+except ImportError:
+    print("⚠️ Training callbacks not found, using basic logging")
+    TrainingProgressCallback = None
+    CurriculumCallback = None
+    TRAINING_CALLBACKS_AVAILABLE = False
+
 
 class GymWrapper(gym.Env):
     """Isaac Sim 환경을 Gymnasium 형식으로 래핑
@@ -186,7 +196,32 @@ def train(timesteps: int = 200000):
     # 콜백 설정
     callbacks = []
     
-    # 체크포인트 콜백
+    # 1. 학습 진행 상황 로깅 (NEW!)
+    if TRAINING_CALLBACKS_AVAILABLE:
+        progress_callback = TrainingProgressCallback(
+            verbose=1,
+            log_freq=10,  # 10 에피소드마다 출력
+        )
+        callbacks.append(progress_callback)
+        print("✅ 학습 진행 상황 로깅 활성화 (10 에피소드마다)")
+    
+    # 2. Curriculum 자동 승급 (NEW!)
+    if TRAINING_CALLBACKS_AVAILABLE:
+        # env_wrapper는 DummyVecEnv의 첫 번째 환경
+        env_wrapper = env.envs[0]
+        curriculum_callback = CurriculumCallback(
+            env_wrapper=env_wrapper,
+            success_window=100,
+            phase_0_threshold=0.30,  # 30% 성공률로 Phase 1
+            phase_1_threshold=0.60,  # 60% 성공률로 Phase 2
+            verbose=1,
+        )
+        callbacks.append(curriculum_callback)
+        print("✅ Curriculum 자동 승급 활성화")
+        print("   - Phase 0→1: 성공률 30% (100 에피소드)")
+        print("   - Phase 1→2: 성공률 60% (100 에피소드)")
+    
+    # 3. 체크포인트 콜백
     checkpoint_callback = CheckpointCallback(
         save_freq=5000,
         save_path=str(log_dir / "checkpoints"),
@@ -196,7 +231,7 @@ def train(timesteps: int = 200000):
     )
     callbacks.append(checkpoint_callback)
     
-    # ✅ 조기 경보 시스템 (사용 가능한 경우만)
+    # 4. 조기 경보 시스템 (사용 가능한 경우만)
     if EARLY_WARNING_AVAILABLE:
         early_warning_callback = EarlyWarningCallback(
             ev_threshold=0.05,       # EV < 0.05

@@ -244,57 +244,75 @@
     </inertial>
   </link>
   <link name="gripper_left_finger">
+    <!-- 그리퍼 베이스 (원통형) -->
     <visual>
-      <origin xyz="0 0 0.0175" rpy="0 0 0"/>
+      <origin xyz="0 0 0.015" rpy="0 0 0"/>
       <geometry>
-        <cylinder radius="0.005" length="0.035"/>
+        <cylinder radius="0.006" length="0.030"/>
       </geometry>
       <material name="black"/>
     </visual>
+    <!-- 그리퍼 팁 (박스형 - 접촉 면적 증가) -->
     <visual>
-      <origin xyz="0 0 0.037" rpy="0 0 0"/>
+      <origin xyz="0 0 0.035" rpy="0 0 0"/>
       <geometry>
-        <box size="0.008 0.006 0.004"/>
+        <box size="0.020 0.010 0.010"/>
       </geometry>
       <material name="silver"/>
     </visual>
+    <!-- 충돌 geometry: 복합 형태 -->
     <collision>
-      <origin xyz="0 0 0.0175" rpy="0 0 0"/>
+      <origin xyz="0 0 0.015" rpy="0 0 0"/>
       <geometry>
-        <cylinder radius="0.005" length="0.035"/>
+        <cylinder radius="0.006" length="0.030"/>
+      </geometry>
+    </collision>
+    <collision>
+      <origin xyz="0 0 0.035" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.020 0.010 0.010"/>
       </geometry>
     </collision>
     <inertial>
-      <mass value="0.0080"/>
-      <origin xyz="0 0 0.0175" rpy="0 0 0"/>
-      <inertia ixx="0.00000082" iyy="0.00000070" izz="0.00000020" ixy="0.00000000" ixz="0.00000000" iyz="0.00000000"/>
+      <mass value="0.0100"/>
+      <origin xyz="0 0 0.020" rpy="0 0 0"/>
+      <inertia ixx="0.00000150" iyy="0.00000120" izz="0.00000040" ixy="0.00000000" ixz="0.00000000" iyz="0.00000000"/>
     </inertial>
   </link>
   <link name="gripper_right_finger">
+    <!-- 그리퍼 베이스 (원통형) -->
     <visual>
-      <origin xyz="0 0 0.0175" rpy="0 0 0"/>
+      <origin xyz="0 0 0.015" rpy="0 0 0"/>
       <geometry>
-        <cylinder radius="0.005" length="0.035"/>
+        <cylinder radius="0.006" length="0.030"/>
       </geometry>
       <material name="black"/>
     </visual>
+    <!-- 그리퍼 팁 (박스형 - 접촉 면적 증가) -->
     <visual>
-      <origin xyz="0 0 0.037" rpy="0 0 0"/>
+      <origin xyz="0 0 0.035" rpy="0 0 0"/>
       <geometry>
-        <box size="0.008 0.006 0.004"/>
+        <box size="0.020 0.010 0.010"/>
       </geometry>
       <material name="silver"/>
     </visual>
+    <!-- 충돌 geometry: 복합 형태 -->
     <collision>
-      <origin xyz="0 0 0.0175" rpy="0 0 0"/>
+      <origin xyz="0 0 0.015" rpy="0 0 0"/>
       <geometry>
-        <cylinder radius="0.005" length="0.035"/>
+        <cylinder radius="0.006" length="0.030"/>
+      </geometry>
+    </collision>
+    <collision>
+      <origin xyz="0 0 0.035" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.020 0.010 0.010"/>
       </geometry>
     </collision>
     <inertial>
-      <mass value="0.0080"/>
-      <origin xyz="0 0 0.0175" rpy="0 0 0"/>
-      <inertia ixx="0.00000082" iyy="0.00000070" izz="0.00000020" ixy="0.00000000" ixz="0.00000000" iyz="0.00000000"/>
+      <mass value="0.0100"/>
+      <origin xyz="0 0 0.020" rpy="0 0 0"/>
+      <inertia ixx="0.00000150" iyy="0.00000120" izz="0.00000040" ixy="0.00000000" ixz="0.00000000" iyz="0.00000000"/>
     </inertial>
   </link>
   <joint name="world_to_base" type="fixed">
@@ -308,30 +326,30 @@
     <origin xyz="0 0 0.06" rpy="0 0 0"/>
     <axis xyz="0 0 1"/>
     <limit lower="-3.14159" upper="3.14159" effort="10" velocity="2.0"/>
-    <dynamics damping="0.5" friction="0.3"/>
+    <dynamics damping="0.8" friction="0.5"/>
   </joint>
   <joint name="joint_2" type="revolute">
     <parent link="link_1"/>
     <child link="link_2"/>
     <origin xyz="0 0 0.08" rpy="0 0 0"/>
     <axis xyz="0 1 0"/>
-    <limit lower="-1.57" upper="1.57" effort="15" velocity="1.5"/>
-    <dynamics damping="0.5" friction="0.3"/>
+    <limit lower="-3.14159" upper="3.14159" effort="15" velocity="1.5"/>
+    <dynamics damping="0.7" friction="0.4"/>
   </joint>
   <joint name="joint_3" type="revolute">
     <parent link="link_2"/>
     <child link="link_3"/>
     <origin xyz="0.16 0 0" rpy="0 0 0"/>
     <axis xyz="0 1 0"/>
-    <limit lower="-1.57" upper="1.57" effort="10" velocity="2.0"/>
-    <dynamics damping="0.5" friction="0.3"/>
+    <limit lower="-3.14159" upper="3.14159" effort="10" velocity="2.0"/>
+    <dynamics damping="0.6" friction="0.35"/>
   </joint>
   <joint name="joint_4" type="revolute">
     <parent link="link_3"/>
     <child link="link_4"/>
     <origin xyz="0.15 0 0" rpy="0 0 0"/>
     <axis xyz="0 1 0"/>
-    <limit lower="-1.57" upper="1.57" effort="8" velocity="2.5"/>
+    <limit lower="-3.14159" upper="3.14159" effort="8" velocity="2.5"/>
     <dynamics damping="0.5" friction="0.3"/>
   </joint>
   <joint name="joint_5" type="revolute">
@@ -340,30 +358,30 @@
     <origin xyz="0 0 0.06" rpy="0 0 0"/>
     <axis xyz="0 0 1"/>
     <limit lower="-3.14159" upper="3.14159" effort="5" velocity="3.0"/>
-    <dynamics damping="0.5" friction="0.3"/>
+    <dynamics damping="0.4" friction="0.25"/>
   </joint>
   <joint name="joint_6" type="revolute">
     <parent link="link_5"/>
     <child link="gripper_base"/>
     <origin xyz="0 0 0.065" rpy="0 0 0"/>
     <axis xyz="0 0 1"/>
-    <limit lower="-1.57" upper="1.57" effort="3" velocity="2.0"/>
-    <dynamics damping="0.5" friction="0.3"/>
+    <limit lower="-3.14159" upper="3.14159" effort="3" velocity="2.0"/>
+    <dynamics damping="0.3" friction="0.2"/>
   </joint>
   <joint name="gripper_left_joint" type="prismatic">
     <parent link="gripper_base"/>
     <child link="gripper_left_finger"/>
     <origin xyz="0 0.015 0.03" rpy="0 0 0"/>
     <axis xyz="0 1 0"/>
-    <limit lower="0" upper="0.02" effort="5" velocity="0.05"/>
-    <dynamics damping="0.5" friction="0.3"/>
+    <limit lower="0" upper="0.025" effort="8" velocity="0.08"/>
+    <dynamics damping="0.8" friction="0.6"/>
   </joint>
   <joint name="gripper_right_joint" type="prismatic">
     <parent link="gripper_base"/>
     <child link="gripper_right_finger"/>
     <origin xyz="0 -0.015 0.03" rpy="0 0 0"/>
     <axis xyz="0 -1 0"/>
-    <limit lower="0" upper="0.02" effort="5" velocity="0.05"/>
-    <dynamics damping="0.5" friction="0.3"/>
+    <limit lower="0" upper="0.025" effort="8" velocity="0.08"/>
+    <dynamics damping="0.8" friction="0.6"/>
   </joint>
 </robot>
