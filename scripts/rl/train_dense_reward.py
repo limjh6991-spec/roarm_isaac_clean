@@ -151,10 +151,16 @@ class GymWrapper(gym.Env):
         return obs, reward, terminated, truncated, info
 
 
-def train(timesteps: int = 200000):
+def train(timesteps: int = 200000, resume_model: str = None, resume_vecnorm: str = None):
     """RL 학습 실행 (Curriculum + Shaped-Sparse)"""
     print("=" * 60)
-    print("🚀 RoArm-M3 Curriculum + Shaped-Sparse RL 학습 시작")
+    if resume_model:
+        print("🔄 RoArm-M3 이어서 학습 시작")
+        print(f"  기존 모델: {resume_model}")
+        if resume_vecnorm:
+            print(f"  VecNormalize: {resume_vecnorm}")
+    else:
+        print("🚀 RoArm-M3 Curriculum + Shaped-Sparse RL 학습 시작")
     print("=" * 60)
     print(f"  목표 timesteps: {timesteps:,}")
     print(f"  학습 시작: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
@@ -176,16 +182,23 @@ def train(timesteps: int = 200000):
     print("🔧 환경 생성 중...")
     env = DummyVecEnv([make_env])
     
-    # ✅ VecNormalize 적용
-    print("🔧 VecNormalize 적용 중...")
-    env = VecNormalize(
-        env,
-        norm_obs=True,          # 관찰 정규화 ✅
-        norm_reward=True,       # 보상 정규화 ✅
-        clip_obs=10.0,          # 관찰 클립
-        clip_reward=10.0,       # 리턴 클립 ✅
-        gamma=0.99,
-    )
+    # ✅ VecNormalize 적용 또는 로드
+    if resume_vecnorm:
+        print(f"🔧 VecNormalize 로드 중: {resume_vecnorm}")
+        env = VecNormalize.load(resume_vecnorm, env)
+        env.training = True  # 학습 모드 활성화
+        env.norm_reward = True  # 보상 정규화 유지
+        print(f"  ✅ VecNormalize 로드 완료 (통계 유지)")
+    else:
+        print("🔧 VecNormalize 적용 중...")
+        env = VecNormalize(
+            env,
+            norm_obs=True,          # 관찰 정규화 ✅
+            norm_reward=True,       # 보상 정규화 ✅
+            clip_obs=10.0,          # 관찰 클립
+            clip_reward=10.0,       # 리턴 클립 ✅
+            gamma=0.99,
+        )
     print(f"  ✅ Observation normalization: ON")
     print(f"  ✅ Reward normalization: ON")
     print(f"  ✅ Clip reward: ±10.0")
@@ -256,25 +269,35 @@ def train(timesteps: int = 200000):
     # 4. Value Clipping + target_kl 유지
     # ═══════════════════════════════════════════════════════════
     
-    print("🤖 PPO 모델 생성 중 (Curriculum + Shaped-Sparse)...")
-    model = PPO(
-        "MlpPolicy",
-        env,
-        learning_rate=3e-4,      # 기본값
-        n_steps=2048,
-        batch_size=64,
-        n_epochs=10,             # 기본값
-        gamma=0.99,
-        gae_lambda=0.95,
-        clip_range=0.2,
-        clip_range_vf=1.0,       # ✅ Value Clipping
-        ent_coef=0.01,           # ✅ 탐색 강화 (Shaped-Sparse용)
-        vf_coef=0.5,             # 기본값
-        max_grad_norm=0.5,
-        target_kl=0.03,          # ✅ 정책 안정성
-        verbose=1,
-        device="cuda" if torch.cuda.is_available() else "cpu",
-        tensorboard_log=str(log_dir / "tensorboard"),
+    if resume_model:
+        print(f"🔄 기존 모델 로드 중: {resume_model}")
+        model = PPO.load(
+            resume_model,
+            env=env,
+            device="cuda" if torch.cuda.is_available() else "cpu",
+        )
+        print(f"  ✅ 모델 로드 완료 (이어서 학습)")
+        print(f"  📊 현재 timesteps: {model.num_timesteps:,}")
+    else:
+        print("🤖 PPO 모델 생성 중 (Curriculum + Shaped-Sparse)...")
+        model = PPO(
+            "MlpPolicy",
+            env,
+            learning_rate=3e-4,      # 기본값
+            n_steps=2048,
+            batch_size=64,
+            n_epochs=10,             # 기본값
+            gamma=0.99,
+            gae_lambda=0.95,
+            clip_range=0.2,
+            clip_range_vf=1.0,       # ✅ Value Clipping
+            ent_coef=0.01,           # ✅ 탐색 강화 (Shaped-Sparse용)
+            vf_coef=0.5,             # 기본값
+            max_grad_norm=0.5,
+            target_kl=0.03,          # ✅ 정책 안정성
+            verbose=1,
+            device="cuda" if torch.cuda.is_available() else "cpu",
+            tensorboard_log=str(log_dir / "tensorboard"),
     )
     print(f"  Device: {model.device}")
     print(f"  Policy: MlpPolicy")
@@ -339,11 +362,27 @@ def main():
         default=100000,
         help="총 학습 timesteps (기본: 100,000)"
     )
+    parser.add_argument(
+        "--resume",
+        type=str,
+        default=None,
+        help="이어서 학습할 모델 경로 (예: logs/.../model.zip)"
+    )
+    parser.add_argument(
+        "--resume-vecnorm",
+        type=str,
+        default=None,
+        help="이어서 학습할 VecNormalize 경로 (예: logs/.../vecnormalize.pkl)"
+    )
     
     args = parser.parse_args()
     
     try:
-        train(args.timesteps)
+        train(
+            timesteps=args.timesteps,
+            resume_model=args.resume,
+            resume_vecnorm=args.resume_vecnorm
+        )
     except Exception as e:
         print(f"\n❌ 오류 발생: {e}")
         import traceback
