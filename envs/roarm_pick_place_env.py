@@ -798,24 +798,24 @@ class RoArmPickPlaceEnv:
             "step": self.current_step,
             "cube_position": cube_pos.tolist(),  # 🔧 v3.2: 월드 좌표 (obs[11:14]는 타깃 상대좌표)
             "distance_to_target": float(cube_to_target_dist),
-            # 콜백용 단계별 달성 플래그 (TrainingProgressCallback)
+            # 🔥 v3.9.0: 콜백용 단계별 달성 플래그
             "reached_near_cube": self.first_reach,
-            "reached_grasp": self.valid_grip,
-            "reached_lift": self.lifted,
-            "reached_near_target": self.goal_near,
-            "is_success": cube_to_target_dist < self.cfg.success_threshold,
+            "reached_grasp": self.first_attach,      # v3.9.0: valid_grip → first_attach
+            "reached_lift": self.first_lift,         # v3.9.0: lifted → first_lift
+            "reached_near_target": self.episode_metrics['hold'],
+            "is_success": self.success,              # v3.9.0: success flag
             # 마일스톤 이벤트 추적
             "events": {
                 "first_reach": self.first_reach,
-                "valid_grip": self.valid_grip,
-                "lifted": self.lifted,
-                "goal_near": self.goal_near,
-                "success": cube_to_target_dist < self.cfg.success_threshold,
+                "valid_grip": self.first_attach,     # v3.9.0: valid_grip → first_attach
+                "lifted": self.first_lift,           # v3.9.0: lifted → first_lift
+                "goal_near": self.episode_metrics['hold'],
+                "success": self.success,
             },
-            # 마일스톤 카운터
+            # 🔥 v3.9.0: 마일스톤 카운터
             "milestone_counts": {
                 "reach": self.episode_reach_count,
-                "grip": self.episode_grip_count,
+                "grip": self.episode_attach_count,   # v3.9.0: grip → attach
                 "lift": self.episode_lift_count,
             },
             # 그리퍼 정보
