@@ -767,7 +767,7 @@ class RoArmPickPlaceEnv:
         self.world.step(render=False)
         
         # ═══════════════════════════════════════════════════════════
-        # 🔥 v3.9.1 FIX: Attach 로직 추가 (grip_rate=0 문제 해결)
+        # 🔥 v3.9.2 FIX: Attach 조건 완화 (6.4cm 거리 장벽 해결)
         # ═══════════════════════════════════════════════════════════
         # 현재 상태 가져오기
         if self.gripper is not None:  # Gripper 초기화 확인
@@ -776,15 +776,15 @@ class RoArmPickPlaceEnv:
             cube_pos = self.cube.get_world_pose()[0]
             gripper_width = self.gripper.measure_width(joint_positions)
             
-            # Grasp 조건 체크
+            # Grasp 조건 체크 (v3.9.2: 조건 완화)
             is_grasping = self.gripper.is_grasped(
                 ee_pos, 
                 cube_pos, 
                 gripper_width,
                 cube_size=0.04,      # 4cm 큐브
-                dist_tol=0.03,       # 3cm 거리 허용
+                dist_tol=0.05,       # 5cm 거리 허용 (완화: 3cm→5cm)
                 z_tol=0.015,         # 1.5cm Z축 정렬
-                width_margin=0.006   # ±6mm 그리퍼 폭 여유
+                width_margin=0.008   # ±8mm 그리퍼 폭 여유 (완화: 6mm→8mm)
             )
             
             # Attach/Detach 처리
@@ -1004,6 +1004,10 @@ class RoArmPickPlaceEnv:
         # 큐브에 가까울수록 지속적으로 양의 보상
         distance_reward = max(0, 0.3 - dist_to_cube) * 10.0  # 🔥 v3.7: 5.0 → 10.0 (2배 강화)
         reward += distance_reward
+        
+        # 🔥 v3.9.2 NEW: 3cm 이하 초근접 보상 (Attach 조건 진입 유도)
+        if dist_to_cube < 0.03:
+            reward += 20.0  # 강력한 근접 보상!
         
         # 🔥 v3.7 NEW: 4. 그리퍼 개폐 보상 (그리퍼 사용 강력 유도)
         # 문제: 60K 스텝 동안 그리퍼 width 항상 0.0 → 정책이 그리퍼를 전혀 사용 안 함
