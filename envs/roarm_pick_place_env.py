@@ -1005,26 +1005,28 @@ class RoArmPickPlaceEnv:
         distance_reward = max(0, 0.3 - dist_to_cube) * 10.0  # 🔥 v3.7: 5.0 → 10.0 (2배 강화)
         reward += distance_reward
         
-        # 🔥 v3.9.2 NEW: 3cm 이하 초근접 보상 (Attach 조건 진입 유도)
-        if dist_to_cube < 0.03:
-            reward += 20.0  # 강력한 근접 보상!
+        # 🔥 v3.9.4 NEW: 단계별 근접 보상 (점진적 유도)
+        # v3.9.2 기반 + 단계별 강화 (v3.9.3 실패 교훈)
+        if dist_to_cube < 0.07:  # 7cm 이하
+            reward += 10.0  # 초기 신호
+        if dist_to_cube < 0.05:  # 5cm 이하
+            reward += 20.0  # 중간 목표
+        if dist_to_cube < 0.03:  # 3cm 이하
+            reward += 30.0  # 최종 목표 (기존 +20 강화)
         
-        # 🔥 v3.9.3 NEW: 4. 조건부 그리퍼 보상 (근거리 이상적 폭 강조)
-        # 문제: 접근 시 그리퍼 너무 벌어짐 (6-8cm)
-        # 해결: 근거리에서 이상적 범위(3-6cm) 강조
-        if dist_to_cube < 0.10:  # 10cm 이내 (근거리)
-            if 0.03 < gripper_width < 0.06:  # 3-6cm (이상적 범위)
-                reward += 5.0  # 이상적 범위 강화
-            elif gripper_width > 0.01:  # 1cm 이상 (기본)
-                reward += 1.0  # 기본 보상 약화 (기존 3.0 → 1.0)
-        else:  # 10cm 이상 (원거리)
-            if gripper_width > 0.01:  # 충돌 회피 위해 그리퍼 열기 유지
-                reward += 3.0  # 원거리 보상 유지
+        # 🔥 v3.9.4: 4. 그리퍼 보상 (v3.9.2 기반 복원)
+        # v3.9.3 실패 원인: 근거리 보상 약화 (3.0 → 1.0)
+        # 해결: v3.9.2 일관성 복원 (입증된 방법)
+        if gripper_width > 0.01:  # 1cm 이상 열면
+            reward += 3.0  # v3.9.2 원래대로 (일관성 유지)
         
-        # 🔥 v3.9.3 NEW: 5. 거리-폭 연동 보상 (Attach 조건 동시 만족 강력 유도)
-        # 목적: 4.8cm 거리 + 4-5cm 폭 → 즉시 Attach
-        if dist_to_cube < 0.05 and 0.03 < gripper_width < 0.06:
-            reward += 30.0  # 강력한 연동 보상!
+        # 🔥 v3.9.4 NEW: 5. 거리-폭 연동 보상 (단계별 완화)
+        # v3.9.3 문제: 조건 너무 엄격 (5cm 진입 못함)
+        # 해결: 10cm부터 신호, 5cm에서 강화
+        if dist_to_cube < 0.10 and 0.03 < gripper_width < 0.06:  # 10cm 이내 + 이상적 폭
+            reward += 10.0  # 초기 신호
+        if dist_to_cube < 0.05 and 0.03 < gripper_width < 0.06:  # 5cm 이내 + 이상적 폭
+            reward += 40.0  # 최종 목표 (기존 30 → 40 강화)
         
         # 🔥 v3.7.7 NEW: 6. Soft Width Reward (큐브 크기 고려한 부드러운 보상)
         # 목적: 증분 제어 시 4cm 주변으로 자연스럽게 유도
