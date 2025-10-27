@@ -54,6 +54,7 @@ class Gripper:
         # Attach 상태
         self.is_attached = False
         self.grasp_joint_path = None
+        self.detach_called_this_step = False  # 🔥 v3.9.1: Detach 플래그
     
     def _find_gripper_joints(self) -> List[str]:
         """Prismatic joint 자동 탐색"""

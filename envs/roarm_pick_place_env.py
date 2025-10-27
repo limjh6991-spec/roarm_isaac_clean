@@ -766,6 +766,44 @@ class RoArmPickPlaceEnv:
         # Physics 시뮬레이션 스텝 (학습 시 render=False 권장)
         self.world.step(render=False)
         
+        # ═══════════════════════════════════════════════════════════
+        # 🔥 v3.9.1 FIX: Attach 로직 추가 (grip_rate=0 문제 해결)
+        # ═══════════════════════════════════════════════════════════
+        # 현재 상태 가져오기
+        joint_positions = self.robot.get_joint_positions()
+        ee_pos = self._get_ee_position()
+        cube_pos = self.cube.get_world_pose()[0]
+        gripper_width = self.gripper.measure_width(joint_positions)
+        
+        # Grasp 조건 체크
+        is_grasping = self.gripper.is_grasped(
+            ee_pos, 
+            cube_pos, 
+            gripper_width,
+            cube_size=0.04,      # 4cm 큐브
+            dist_tol=0.03,       # 3cm 거리 허용
+            z_tol=0.015,         # 1.5cm Z축 정렬
+            width_margin=0.006   # ±6mm 그리퍼 폭 여유
+        )
+        
+        # Attach/Detach 처리
+        if is_grasping and not self.gripper.is_attached:
+            # 조건 만족 → 부착
+            self.gripper.attach(
+                self.world.stage,
+                self.ee_prim_path,          # gripper_base 경로
+                "/World/DynamicCube",       # 큐브 경로
+                timestep=self.step_count
+            )
+            if self.current_step % 10 == 0:
+                print(f"  🟢 GRASP! dist={np.linalg.norm(cube_pos-ee_pos):.3f}, width={gripper_width:.3f}, attached={self.gripper.is_attached}")
+        elif not is_grasping and self.gripper.is_attached:
+            # 조건 불만족 → 분리
+            self.gripper.detach(self.world.stage)
+            self.gripper.detach_called_this_step = True
+        else:
+            self.gripper.detach_called_this_step = False
+        
         # 현재 상태 관측
         obs = self._get_observation()
         
