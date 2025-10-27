@@ -767,7 +767,7 @@ class RoArmPickPlaceEnv:
         self.world.step(render=False)
         
         # ═══════════════════════════════════════════════════════════
-        # 🔥 v3.9.2 FIX: Attach 조건 완화 (6.4cm 거리 장벽 해결)
+        # 🔥 v3.9.3 FIX: 그리퍼 폭 조건 완화 (6.2cm 문제 해결)
         # ═══════════════════════════════════════════════════════════
         # 현재 상태 가져오기
         if self.gripper is not None:  # Gripper 초기화 확인
@@ -776,15 +776,15 @@ class RoArmPickPlaceEnv:
             cube_pos = self.cube.get_world_pose()[0]
             gripper_width = self.gripper.measure_width(joint_positions)
             
-            # Grasp 조건 체크 (v3.9.2: 조건 완화)
+            # Grasp 조건 체크 (v3.9.3: 그리퍼 폭 조건 대폭 완화)
             is_grasping = self.gripper.is_grasped(
                 ee_pos, 
                 cube_pos, 
                 gripper_width,
                 cube_size=0.04,      # 4cm 큐브
-                dist_tol=0.05,       # 5cm 거리 허용 (완화: 3cm→5cm)
+                dist_tol=0.05,       # 5cm 거리 허용
                 z_tol=0.015,         # 1.5cm Z축 정렬
-                width_margin=0.008   # ±8mm 그리퍼 폭 여유 (완화: 6mm→8mm)
+                width_margin=0.015   # ±15mm 그리퍼 폭 여유 (완화: 8mm→15mm, 2.5-5.5cm 허용)
             )
             
             # Attach/Detach 처리
@@ -1009,13 +1009,24 @@ class RoArmPickPlaceEnv:
         if dist_to_cube < 0.03:
             reward += 20.0  # 강력한 근접 보상!
         
-        # 🔥 v3.7 NEW: 4. 그리퍼 개폐 보상 (그리퍼 사용 강력 유도)
-        # 문제: 60K 스텝 동안 그리퍼 width 항상 0.0 → 정책이 그리퍼를 전혀 사용 안 함
-        # 해결: 그리퍼를 여는 행동에 명시적 보상
-        if gripper_width > 0.01:  # 1cm 이상 열면
-            reward += 3.0  # 매 스텝 +3.0 (그리퍼 사용 강력 유도)
+        # 🔥 v3.9.3 NEW: 4. 조건부 그리퍼 보상 (근거리 이상적 폭 강조)
+        # 문제: 접근 시 그리퍼 너무 벌어짐 (6-8cm)
+        # 해결: 근거리에서 이상적 범위(3-6cm) 강조
+        if dist_to_cube < 0.10:  # 10cm 이내 (근거리)
+            if 0.03 < gripper_width < 0.06:  # 3-6cm (이상적 범위)
+                reward += 5.0  # 이상적 범위 강화
+            elif gripper_width > 0.01:  # 1cm 이상 (기본)
+                reward += 1.0  # 기본 보상 약화 (기존 3.0 → 1.0)
+        else:  # 10cm 이상 (원거리)
+            if gripper_width > 0.01:  # 충돌 회피 위해 그리퍼 열기 유지
+                reward += 3.0  # 원거리 보상 유지
         
-        # 🔥 v3.7.7 NEW: 5. Soft Width Reward (큐브 크기 고려한 부드러운 보상)
+        # 🔥 v3.9.3 NEW: 5. 거리-폭 연동 보상 (Attach 조건 동시 만족 강력 유도)
+        # 목적: 4.8cm 거리 + 4-5cm 폭 → 즉시 Attach
+        if dist_to_cube < 0.05 and 0.03 < gripper_width < 0.06:
+            reward += 30.0  # 강력한 연동 보상!
+        
+        # 🔥 v3.7.7 NEW: 6. Soft Width Reward (큐브 크기 고려한 부드러운 보상)
         # 목적: 증분 제어 시 4cm 주변으로 자연스럽게 유도
         # 이전 문제: 3cm vs 8-11cm 극단 왕복
         # 해결책: 이차 패널티로 4cm 근처 선호 유도
