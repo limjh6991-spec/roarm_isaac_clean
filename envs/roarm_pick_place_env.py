@@ -822,7 +822,7 @@ class RoArmPickPlaceEnv:
             "gripper": {
                 "width": float(gripper_width),
                 "is_grasped": float(is_grasped),
-                "grip_frames": self.grip_frames,
+                "attach_frames": self.attach_hold_frames,  # v3.9.0: grip_frames → attach_hold_frames
             },
             # 종료 사유
             "done_reason": "ongoing" if not done else (
