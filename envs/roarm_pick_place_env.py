@@ -1113,7 +1113,7 @@ class RoArmPickPlaceEnv:
             # 4cm일 때 0, 멀어질수록 패널티 증가
             width_penalty = -5.0 * (width_error ** 2)
             reward += width_penalty
-            self.episode_reward_breakdown['width_penalty'] += width_penalty
+            # v3.9.6: width_penalty 제거됨 (간소화)
             
             # 디버깅: width 분포 추적 (100 스텝마다)
             if self.step_count % 100 == 0 and dist_to_cube < 0.08:
