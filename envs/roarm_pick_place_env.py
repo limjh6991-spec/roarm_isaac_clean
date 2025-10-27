@@ -256,6 +256,72 @@ class RoArmPickPlaceEnv:
         # ═══════════════════════════════════════════════════════════
         self.episode_successes = []   # 최근 에피소드 성공 여부
         
+        # ═══════════════════════════════════════════════════════════
+        # 🔍 v3.9.5: 상세 로깅 시스템 (진단용)
+        # ═══════════════════════════════════════════════════════════
+        # 1. 에피소드별 최소 거리 추적
+        self.episode_min_distance = float('inf')
+        self.episode_distances = []  # 모든 거리 기록 (분포 분석용)
+        
+        # 2. 단계별 보상 트리거 추적
+        self.stage_7cm_triggered = 0
+        self.stage_5cm_triggered = 0
+        self.stage_3cm_triggered = 0
+        self.stage_7cm_steps = []  # 트리거 시점 기록
+        self.stage_5cm_steps = []
+        self.stage_3cm_steps = []
+        
+        # 3. 그리퍼 보상 통계
+        self.gripper_reward_count = 0
+        self.gripper_reward_total = 0.0
+        self.gripper_action_log = []  # (step, action, width, dist)
+        
+        # 4. 액션 분포 통계
+        self.action_stats = {
+            'gripper_actions': [],     # 그리퍼 액션 기록
+            'gripper_mean': 0.0,
+            'gripper_std': 0.0,
+        }
+        
+        # 5. 보상 분해 (에피소드별)
+        self.episode_reward_breakdown = {
+            'distance_reward': 0.0,
+            'progress_reward': 0.0,
+            'stage_bonus_7cm': 0.0,
+            'stage_bonus_5cm': 0.0,
+            'stage_bonus_3cm': 0.0,
+            'gripper_bonus': 0.0,
+            'synergy_bonus': 0.0,
+            'width_penalty': 0.0,
+            'milestone_bonus': 0.0,
+        }
+        
+        # 6. 학습 지표 로깅 (외부에서 업데이트)
+        self.training_metrics = {
+            'policy_entropy': [],
+            'kl_divergence': [],
+            'clip_fraction': [],
+            'gradient_norm': [],
+            'value_loss': [],
+            'learning_rate': [],
+        }
+        
+        # 7. 환경 파라미터 로깅
+        self.env_params_log = {
+            'cube_initial_positions': [],
+            'ee_initial_positions': [],
+            'width_margin': self.gate_config.grip_width_margin,
+            'dist_tol': self.gate_config.grip_dist_tol,
+        }
+        
+        # 8. 전역 통계 (모든 에피소드)
+        self.global_stats = {
+            'episode_min_distances': [],  # 각 에피소드의 최소 거리
+            'episode_mean_distances': [],
+            'episode_rewards': [],
+            'episode_lengths': [],
+        }
+        
         # 🔥 v3.5: 모듈화된 컴포넌트 초기화 (로봇 로드 후 설정됨)
         self.gripper = None           # Gripper controller
         self.ee_prim_path = None      # EE prim 경로
@@ -568,6 +634,46 @@ class RoArmPickPlaceEnv:
         self.episode_lift_count = 0
         self.episode_success_count = 0
         
+        # ═══════════════════════════════════════════════════════════
+        # 🔍 v3.9.5: 로깅 변수 리셋
+        # ═══════════════════════════════════════════════════════════
+        # 1. 거리 추적
+        if hasattr(self, 'episode_min_distance') and self.episode_min_distance != float('inf'):
+            self.global_stats['episode_min_distances'].append(self.episode_min_distance)
+        if hasattr(self, 'episode_distances') and self.episode_distances:
+            mean_dist = np.mean(self.episode_distances)
+            self.global_stats['episode_mean_distances'].append(mean_dist)
+        
+        self.episode_min_distance = float('inf')
+        self.episode_distances = []
+        
+        # 2. 단계별 보상 트리거 리셋
+        self.stage_7cm_triggered = 0
+        self.stage_5cm_triggered = 0
+        self.stage_3cm_triggered = 0
+        
+        # 3. 그리퍼 보상 통계 리셋
+        self.gripper_reward_count = 0
+        self.gripper_reward_total = 0.0
+        
+        # 4. 보상 분해 리셋
+        self.episode_reward_breakdown = {
+            'distance_reward': 0.0,
+            'progress_reward': 0.0,
+            'stage_bonus_7cm': 0.0,
+            'stage_bonus_5cm': 0.0,
+            'stage_bonus_3cm': 0.0,
+            'gripper_bonus': 0.0,
+            'synergy_bonus': 0.0,
+            'width_penalty': 0.0,
+            'milestone_bonus': 0.0,
+        }
+        
+        # 5. 환경 파라미터 로깅
+        ee_pos = self._get_ee_position()
+        self.env_params_log['ee_initial_positions'].append(ee_pos.copy())
+        self.env_params_log['cube_initial_positions'].append(cube_pos.copy())
+        
         # 🔥 v3.5: FixedJoint 상태 리셋 (이전 에피소드 attach 제거)
         if self.gripper and self.gripper.is_attached:
             try:
@@ -732,7 +838,10 @@ class RoArmPickPlaceEnv:
             0.025   # 완전 열림 (URDF limit: 0.025)
         )
         
-        # 🔥 v3.7.5 FIX: URDF 베이스 간격(3cm) 포함한 실제 폭 계산
+        # � v3.9.5: 그리퍼 액션 로깅
+        self.action_stats['gripper_actions'].append(float(gripper_scalar))
+        
+        # �🔥 v3.7.5 FIX: URDF 베이스 간격(3cm) 포함한 실제 폭 계산
         # 실제 gripper width = BASE_GAP + left_finger_pos + right_finger_pos
         # BASE_GAP = 0.03m (URDF에서 양쪽 finger 사이 초기 간격)
         BASE_GAP = 0.03
@@ -1004,34 +1113,64 @@ class RoArmPickPlaceEnv:
         # 큐브에 가까울수록 지속적으로 양의 보상
         distance_reward = max(0, 0.3 - dist_to_cube) * 10.0  # 🔥 v3.7: 5.0 → 10.0 (2배 강화)
         reward += distance_reward
+        self.episode_reward_breakdown['distance_reward'] += distance_reward
+        
+        # 🔥 v3.9.5: 거리 추적
+        self.episode_distances.append(dist_to_cube)
+        if dist_to_cube < self.episode_min_distance:
+            self.episode_min_distance = dist_to_cube
         
         # 🔥 v3.9.4 NEW: 단계별 근접 보상 (점진적 유도)
         # v3.9.2 기반 + 단계별 강화 (v3.9.3 실패 교훈)
         if dist_to_cube < 0.07:  # 7cm 이하
-            reward += 10.0  # 초기 신호
+            stage_bonus = 10.0
+            reward += stage_bonus
+            self.episode_reward_breakdown['stage_bonus_7cm'] += stage_bonus
+            if self.stage_7cm_triggered == 0:  # 첫 트리거
+                self.stage_7cm_triggered += 1
+                self.stage_7cm_steps.append(self.step_count)
         if dist_to_cube < 0.05:  # 5cm 이하
-            reward += 20.0  # 중간 목표
+            stage_bonus = 20.0
+            reward += stage_bonus
+            self.episode_reward_breakdown['stage_bonus_5cm'] += stage_bonus
+            if self.stage_5cm_triggered == 0:  # 첫 트리거
+                self.stage_5cm_triggered += 1
+                self.stage_5cm_steps.append(self.step_count)
         if dist_to_cube < 0.03:  # 3cm 이하
-            reward += 30.0  # 최종 목표 (기존 +20 강화)
+            stage_bonus = 30.0
+            reward += stage_bonus
+            self.episode_reward_breakdown['stage_bonus_3cm'] += stage_bonus
+            if self.stage_3cm_triggered == 0:  # 첫 트리거
+                self.stage_3cm_triggered += 1
+                self.stage_3cm_steps.append(self.step_count)
         
         # 🔥 v3.9.4: 4. 그리퍼 보상 (v3.9.2 기반 복원)
         # v3.9.3 실패 원인: 근거리 보상 약화 (3.0 → 1.0)
         # 해결: v3.9.2 일관성 복원 (입증된 방법)
+        gripper_bonus = 0.0
         if gripper_width > 0.01:  # 1cm 이상 열면
-            reward += 3.0  # v3.9.2 원래대로 (일관성 유지)
+            gripper_bonus = 3.0
+            reward += gripper_bonus
+            self.gripper_reward_count += 1
+            self.gripper_reward_total += gripper_bonus
+        self.episode_reward_breakdown['gripper_bonus'] += gripper_bonus
         
         # 🔥 v3.9.4 NEW: 5. 거리-폭 연동 보상 (단계별 완화)
         # v3.9.3 문제: 조건 너무 엄격 (5cm 진입 못함)
         # 해결: 10cm부터 신호, 5cm에서 강화
+        synergy_bonus = 0.0
         if dist_to_cube < 0.10 and 0.03 < gripper_width < 0.06:  # 10cm 이내 + 이상적 폭
-            reward += 10.0  # 초기 신호
+            synergy_bonus += 10.0
         if dist_to_cube < 0.05 and 0.03 < gripper_width < 0.06:  # 5cm 이내 + 이상적 폭
-            reward += 40.0  # 최종 목표 (기존 30 → 40 강화)
+            synergy_bonus += 40.0
+        reward += synergy_bonus
+        self.episode_reward_breakdown['synergy_bonus'] += synergy_bonus
         
         # 🔥 v3.7.7 NEW: 6. Soft Width Reward (큐브 크기 고려한 부드러운 보상)
         # 목적: 증분 제어 시 4cm 주변으로 자연스럽게 유도
         # 이전 문제: 3cm vs 8-11cm 극단 왕복
         # 해결책: 이차 패널티로 4cm 근처 선호 유도
+        width_penalty = 0.0
         if dist_to_cube < 0.15:  # 15cm 이내에서만 (너무 멀면 무의미)
             IDEAL_WIDTH = 0.04  # 4cm (큐브와 동일)
             width_error = gripper_width - IDEAL_WIDTH
@@ -1039,6 +1178,7 @@ class RoArmPickPlaceEnv:
             # 4cm일 때 0, 멀어질수록 패널티 증가
             width_penalty = -5.0 * (width_error ** 2)
             reward += width_penalty
+            self.episode_reward_breakdown['width_penalty'] += width_penalty
             
             # 디버깅: width 분포 추적 (100 스텝마다)
             if self.step_count % 100 == 0 and dist_to_cube < 0.08:
@@ -1142,8 +1282,9 @@ class RoArmPickPlaceEnv:
         
         # 최대 스텝 도달
         if self.current_step >= self.max_steps:
-            print(f"  ⏱️ Timeout (Max steps: {self.max_steps})")
+            print(f"  ⏱️ TimeLimit reached: {self.current_step}/{self.max_steps} steps")
             self._record_success(False)
+            self._print_episode_stats()  # 🔍 v3.9.5: 에피소드 종료 시 통계 출력
             return True
         
         # 물체가 테이블 밖으로 떨어짐 (Z < 0)
@@ -1167,6 +1308,102 @@ class RoArmPickPlaceEnv:
         if len(self.episode_successes) > self.cfg.success_rate_window:
             self.episode_successes.pop(0)
         
+        # 성공률 계산 (최소 50 에피소드 이상)
+        if len(self.episode_successes) >= 50:
+            success_rate = np.mean(self.episode_successes)
+    
+    def _print_episode_stats(self):
+        """
+        🔍 v3.9.5: 에피소드 종료 시 상세 통계 출력
+        """
+        print(f"\n" + "="*60)
+        print(f"📊 에피소드 종료 통계 (Step {self.step_count})")
+        print(f"="*60)
+        
+        # 1. 거리 분포
+        if self.episode_distances:
+            print(f"\n1️⃣ 거리 분석:")
+            print(f"   최소 거리: {self.episode_min_distance*100:.1f}cm")
+            print(f"   평균 거리: {np.mean(self.episode_distances)*100:.1f}cm")
+            print(f"   최대 거리: {np.max(self.episode_distances)*100:.1f}cm")
+            print(f"   표준편차: {np.std(self.episode_distances)*100:.1f}cm")
+            
+            # 히스토그램 (텍스트 기반)
+            bins = [0, 0.05, 0.07, 0.10, 0.15, 0.20, 1.0]  # 5cm, 7cm, 10cm, 15cm, 20cm
+            hist, _ = np.histogram(self.episode_distances, bins=bins)
+            print(f"   분포:")
+            print(f"     < 5cm:  {hist[0]:4d}회 ({hist[0]/len(self.episode_distances)*100:5.1f}%)")
+            print(f"     5-7cm:  {hist[1]:4d}회 ({hist[1]/len(self.episode_distances)*100:5.1f}%)")
+            print(f"     7-10cm: {hist[2]:4d}회 ({hist[2]/len(self.episode_distances)*100:5.1f}%)")
+            print(f"     10-15cm: {hist[3]:4d}회 ({hist[3]/len(self.episode_distances)*100:5.1f}%)")
+            print(f"     15-20cm: {hist[4]:4d}회 ({hist[4]/len(self.episode_distances)*100:5.1f}%)")
+            print(f"     > 20cm:  {hist[5]:4d}회 ({hist[5]/len(self.episode_distances)*100:5.1f}%)")
+        
+        # 2. 단계별 보상 트리거
+        print(f"\n2️⃣ 단계별 보상 트리거:")
+        print(f"   < 7cm:  {self.stage_7cm_triggered}회")
+        if self.stage_7cm_steps:
+            print(f"           첫 트리거: Step {self.stage_7cm_steps[0]}")
+        print(f"   < 5cm:  {self.stage_5cm_triggered}회")
+        if self.stage_5cm_steps:
+            print(f"           첫 트리거: Step {self.stage_5cm_steps[0]}")
+        print(f"   < 3cm:  {self.stage_3cm_triggered}회")
+        if self.stage_3cm_steps:
+            print(f"           첫 트리거: Step {self.stage_3cm_steps[0]}")
+        
+        # 3. 그리퍼 보상 통계
+        print(f"\n3️⃣ 그리퍼 보상 통계:")
+        print(f"   트리거 횟수: {self.gripper_reward_count}회 ({self.gripper_reward_count/self.current_step*100:.1f}%)")
+        if self.gripper_reward_count > 0:
+            avg_gripper = self.gripper_reward_total / self.gripper_reward_count
+            print(f"   평균 보상: {avg_gripper:.2f}")
+            print(f"   총 보상: {self.gripper_reward_total:.1f}")
+        
+        # 4. 액션 분포
+        if hasattr(self, 'action_stats') and self.action_stats['gripper_actions']:
+            gripper_actions = self.action_stats['gripper_actions']
+            print(f"\n4️⃣ 그리퍼 액션 분포:")
+            print(f"   평균: {np.mean(gripper_actions):.3f}")
+            print(f"   표준편차: {np.std(gripper_actions):.3f}")
+            print(f"   최소: {np.min(gripper_actions):.3f}")
+            print(f"   최대: {np.max(gripper_actions):.3f}")
+            
+            # 액션 히스토그램
+            positive = np.sum(np.array(gripper_actions) > 0.1)
+            negative = np.sum(np.array(gripper_actions) < -0.1)
+            neutral = len(gripper_actions) - positive - negative
+            print(f"   열기(>0.1):  {positive}회 ({positive/len(gripper_actions)*100:.1f}%)")
+            print(f"   닫기(<-0.1): {negative}회 ({negative/len(gripper_actions)*100:.1f}%)")
+            print(f"   중립:        {neutral}회 ({neutral/len(gripper_actions)*100:.1f}%)")
+        
+        # 5. 보상 분해
+        print(f"\n5️⃣ 보상 분해:")
+        total = sum(self.episode_reward_breakdown.values())
+        for key, value in self.episode_reward_breakdown.items():
+            if abs(value) > 0.01:  # 0이 아닌 항목만
+                percentage = (value / total * 100) if total != 0 else 0
+                print(f"   {key:20s}: {value:8.1f} ({percentage:5.1f}%)")
+        print(f"   {'TOTAL':20s}: {total:8.1f}")
+        
+        # 6. 마일스톤 달성
+        print(f"\n6️⃣ 마일스톤 달성:")
+        print(f"   REACH:   {'✅' if self.episode_metrics['reach'] else '❌'}")
+        print(f"   ATTACH:  {'✅' if self.episode_metrics['attach'] else '❌'}")
+        print(f"   LIFT:    {'✅' if self.episode_metrics['lift'] else '❌'}")
+        print(f"   SUCCESS: {'✅' if self.episode_metrics['success'] else '❌'}")
+        
+        # 7. 환경 파라미터
+        print(f"\n7️⃣ 환경 파라미터:")
+        print(f"   dist_tol: {self.gate_config.grip_dist_tol*100:.1f}cm")
+        print(f"   width_margin: {self.gate_config.grip_width_margin*100:.1f}cm")
+        print(f"   ideal_width: {self.gate_config.cube_size*100:.1f}cm")
+        
+        print(f"="*60 + "\n")
+    
+    def _check_curriculum_upgrade(self):
+        """
+        Curriculum 승급 체크 (별도 함수로 분리)
+        """
         # 성공률 계산 (최소 50 에피소드 이상)
         if len(self.episode_successes) >= 50:
             success_rate = np.mean(self.episode_successes)
