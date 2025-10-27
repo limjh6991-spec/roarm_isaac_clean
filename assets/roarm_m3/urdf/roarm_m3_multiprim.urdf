@@ -333,7 +333,7 @@
     <child link="link_2"/>
     <origin xyz="0 0 0.08" rpy="0 0 0"/>
     <axis xyz="0 1 0"/>
-    <limit lower="-3.14159" upper="3.14159" effort="15" velocity="1.5"/>
+    <limit lower="-1.57" upper="1.57" effort="15" velocity="1.5"/>
     <dynamics damping="0.7" friction="0.4"/>
   </joint>
   <joint name="joint_3" type="revolute">
@@ -341,7 +341,7 @@
     <child link="link_3"/>
     <origin xyz="0.16 0 0" rpy="0 0 0"/>
     <axis xyz="0 1 0"/>
-    <limit lower="-3.14159" upper="3.14159" effort="10" velocity="2.0"/>
+    <limit lower="-1.57" upper="1.57" effort="10" velocity="2.0"/>
     <dynamics damping="0.6" friction="0.35"/>
   </joint>
   <joint name="joint_4" type="revolute">
@@ -365,7 +365,7 @@
     <child link="gripper_base"/>
     <origin xyz="0 0 0.065" rpy="0 0 0"/>
     <axis xyz="0 0 1"/>
-    <limit lower="-3.14159" upper="3.14159" effort="3" velocity="2.0"/>
+    <limit lower="-1.57" upper="1.57" effort="3" velocity="2.0"/>
     <dynamics damping="0.3" friction="0.2"/>
   </joint>
   <joint name="gripper_left_joint" type="prismatic">

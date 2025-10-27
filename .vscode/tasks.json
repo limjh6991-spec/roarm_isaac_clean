@@ -1,0 +1,153 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Preflight: System Check",
+      "type": "shell",
+      "command": "bash",
+      "args": ["devops/preflight/check_system.sh"],
+      "group": "test",
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": false,
+        "panel": "shared"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Preflight: Isaac Extensions",
+      "type": "shell",
+      "command": "source ~/isaacsim-venv/bin/activate && python devops/preflight/check_isaac_extensions.py",
+      "group": "test",
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": false,
+        "panel": "shared"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Preflight: USD Integrity",
+      "type": "shell",
+      "command": "python",
+      "args": [
+        "devops/preflight/check_usd_integrity.py",
+        "assets/roarm_m3/usd/roarm_m3.usd"
+      ],
+      "group": "test",
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": false,
+        "panel": "shared"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Preflight: All Checks",
+      "type": "shell",
+      "command": "bash",
+      "args": ["devops/preflight_all.sh"],
+      "group": {
+        "kind": "test",
+        "isDefault": true
+      },
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": true,
+        "panel": "shared"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Run: Isaac Sim (Supervised)",
+      "type": "shell",
+      "command": "bash",
+      "args": [
+        "devops/run_isaac_supervised.sh",
+        "${input:scriptPath}"
+      ],
+      "group": "build",
+      "dependsOn": ["Preflight: All Checks"],
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": true,
+        "panel": "dedicated"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Test: URDF Validation",
+      "type": "shell",
+      "command": "pytest",
+      "args": [
+        "tests/test_urdf_validation.py",
+        "-v"
+      ],
+      "group": "test",
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": false,
+        "panel": "shared"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Test: Isaac Sim Boot",
+      "type": "shell",
+      "command": "source ~/isaacsim-venv/bin/activate && pytest tests/test_kit_boot.py -v",
+      "group": "test",
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": false,
+        "panel": "shared"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Validate URDF",
+      "type": "shell",
+      "command": "python",
+      "args": [
+        "scripts/urdf/validate_urdf.py",
+        "assets/roarm_m3/urdf/roarm_m3_complete.urdf"
+      ],
+      "group": "build",
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": false,
+        "panel": "shared"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Convert URDF to USD",
+      "type": "shell",
+      "command": "source ~/isaacsim-venv/bin/activate && bash devops/run_isaac_supervised.sh scripts/usd/convert_to_usd.py assets/roarm_m3/urdf/roarm_m3_complete.urdf assets/roarm_m3/usd/roarm_m3.usd",
+      "group": "build",
+      "dependsOn": ["Validate URDF"],
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": true,
+        "panel": "dedicated"
+      },
+      "problemMatcher": []
+    }
+  ],
+  "inputs": [
+    {
+      "id": "scriptPath",
+      "type": "promptString",
+      "description": "Enter the script path to run (e.g., scripts/launch_gui.py)",
+      "default": "scripts/launch_gui.py"
+    }
+  ]
+}

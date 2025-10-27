@@ -169,10 +169,10 @@ class RoArmPickPlaceEnv:
         
         print("=" * 60)
         print("🤖 RoArm-M3 Pick and Place Environment")
-        print("🔥 ENV_VERSION = v3.8.0 (SAFE HOME POSITION)")
-        print("   - FIX: 로봇팔 수직 [0, 0, 0, ...] + 그리퍼만 수평 [Joint 4 = 1.57]")
-        print("   - Physics 안정화: 1초 대기 (60 steps)")
-        print("   - URDF: Joint 4 범위 ±180° (그리퍼 회전 가능)")
+        print("🔥 ENV_VERSION = v3.9.0 (ROBUST GRIP - False Positive 방지)")
+        print("   - FIX: Attach 기반 성공 정의 (물리적 부착만 인정)")
+        print("   - 단계별 지표: Reach → Attach → Lift → Success")
+        print("   - False Positive 방지: Attach & Lift & Hold")
         print("=" * 60)
         
         # 로봇 로드
@@ -221,21 +221,35 @@ class RoArmPickPlaceEnv:
         self.current_gripper_pos = 0.0125  # 중간값에서 시작 (0.0 ~ 0.025 범위)
         
         # ═══════════════════════════════════════════════════════════
-        # 🎯 SHAPED-SPARSE: 1회성 이벤트 플래그
+        # 🎯 v3.9.0: 단계별 메트릭 추적 (False Positive 방지)
         # ═══════════════════════════════════════════════════════════
         self.first_reach = False      # EE가 큐브에 처음 근접 (5cm)
-        self.valid_grip = False       # 유효한 그립 달성 (3프레임)
-        self.lifted = False           # 큐브를 들어올림 (5cm)
-        self.goal_near = False        # 큐브가 목표에 근접 (8cm)
+        self.first_attach = False     # 🔥 v3.9.0: 물리적 부착 달성
+        self.first_lift = False       # 🔥 v3.9.0: 리프트 달성 (attach 후)
+        self.success = False          # 🔥 v3.9.0: 최종 성공 (attach & lift & hold)
         
-        # 프레임 히스테리시스 카운터
-        self.grip_frames = 0          # 연속 그립 프레임
-        self.success_frames = 0       # 연속 성공 프레임
+        # 🔥 v3.9.0: 프레임 카운터
+        self.attach_hold_frames = 0   # Attach 유지 프레임
+        self.lift_hold_frames = 0     # Lift 유지 프레임
+        self.success_frames = 0       # Success 유지 프레임
+        
+        # 🔥 v3.9.0: 에피소드 메트릭 (분석용)
+        self.episode_metrics = {
+            'reach': False,           # dist < 5cm
+            'attach': False,          # is_attached
+            'lift': False,            # Δz > 2cm
+            'hold': False,            # N 프레임 유지
+            'success': False          # attach & lift & hold
+        }
         
         # 마일스톤 카운터 (에피소드 통계용)
         self.episode_reach_count = 0
-        self.episode_grip_count = 0
+        self.episode_attach_count = 0  # 🔥 v3.9.0: attach 카운트
         self.episode_lift_count = 0
+        self.episode_success_count = 0 # 🔥 v3.9.0: success 카운트
+        
+        # 🔥 v3.9.0: 초기 큐브 위치 저장 (리프트 계산용)
+        self.initial_cube_z = None
         
         # ═══════════════════════════════════════════════════════════
         # 📚 CURRICULUM: 성공률 추적
@@ -435,6 +449,11 @@ class RoArmPickPlaceEnv:
         for _ in range(60):
             self.world.step(render=False)
         
+        # 🔥 v3.9.0: 초기 큐브 Z 위치 저장 (리프트 계산용)
+        cube_pos = self.cube.get_world_pose()[0]
+        self.initial_cube_z = cube_pos[2]
+        print(f"  📦 초기 큐브 Z: {self.initial_cube_z:.3f}m")
+        
         # 안정화 후 실제 적용된 관절 값 확인
         actual_positions = self.robot.get_joint_positions()
         print(f"  ✅ 안정화 후 실제 관절 값: {actual_positions[:6].tolist()}")
@@ -519,23 +538,35 @@ class RoArmPickPlaceEnv:
         self.prev_cube_to_target_dist = None
         
         # ═══════════════════════════════════════════════════════════
-        # 🎯 SHAPED-SPARSE: 1회성 플래그 리셋
+        # 🎯 v3.9.0: 마일스톤 플래그 리셋
         # ═══════════════════════════════════════════════════════════
         self.first_reach = False
-        self.valid_grip = False
-        self.lifted = False
-        self.goal_near = False
-        self.grip_frames = 0
+        self.first_attach = False
+        self.first_lift = False
+        self.success = False
+        
+        self.attach_hold_frames = 0
+        self.lift_hold_frames = 0
         self.success_frames = 0
+        
+        # 🔥 v3.9.0: 에피소드 메트릭 리셋
+        self.episode_metrics = {
+            'reach': False,
+            'attach': False,
+            'lift': False,
+            'hold': False,
+            'success': False
+        }
         
         # 🔥 v3.5: Gripper attach 상태 리셋
         if self.gripper:
             self.gripper.reset()
         
-        # 마일스톤 카운터 리셋
+        # 🔥 v3.9.0: 마일스톤 카운터 리셋
         self.episode_reach_count = 0
-        self.episode_grip_count = 0
+        self.episode_attach_count = 0
         self.episode_lift_count = 0
+        self.episode_success_count = 0
         
         # 🔥 v3.5: FixedJoint 상태 리셋 (이전 에피소드 attach 제거)
         if self.gripper and self.gripper.is_attached:
@@ -855,29 +886,30 @@ class RoArmPickPlaceEnv:
         cube_pos = ee_pos + cube_relative_to_ee
         
         # ═══════════════════════════════════════════════════════════
-        # 🔒 GATING: grasp_valid 체크 (🔥 v3.7.7: 임계치 완화)
+        # 🔒 v3.9.0: 물리적 부착 확인 (Attach 기반 성공 정의)
         # ═══════════════════════════════════════════════════════════
-        CUBE_WIDTH = 0.04  # 4cm 큐브
-        # 🔥 v3.8.1 FIX: GRIP 조건 강화 (실제 잡기 가능하도록)
-        # 목적: LIFT 학습을 위해 실제로 큐브를 물리적으로 잡을 수 있는 조건
-        # 변경: 거리 5cm→3cm, 그리퍼 2.5~6.0cm→3.0~5.0cm, Z정렬 2cm→1.5cm
-        is_grasping_cube = (0.030 < gripper_width < 0.050)  # 큐브를 끼운 상태 (강화)
+        is_attached = self.gripper.is_attached if self.gripper else False
         
-        grasp_valid = (
-            dist_to_cube < 0.03 and            # 🔥 v3.8.1: 3cm 이내 (5cm→3cm 강화)
-            is_grasping_cube and               # 🔥 v3.8.1: 큐브를 끼운 상태 (3.0~5.0cm 강화)
-            abs(cube_relative_to_ee[2]) < 0.015  # 🔥 v3.8.1: 1.5cm 이내 (2cm→1.5cm 강화)
+        # 🔥 v3.9.0: 보상용 게이트 (느슨 - 탐색 유도)
+        grasp_valid_reward = (
+            dist_to_cube < 0.05 and            # 5cm (탐색 유도)
+            (0.030 < gripper_width < 0.050)    # 그리퍼 너비
         )
         
-        # 🔥 v3.5: 모듈화된 attach/detach 관리
-        if self.gripper is not None:
-            if grasp_valid and not self.gripper.is_attached:
-                gripper_path = f"{self.robot.prim_path}/gripper_base"
-                self.gripper.attach(self.world.stage, gripper_path, "/World/cube", self.current_step)
-            elif not grasp_valid and self.gripper.is_attached:
-                self.gripper.detach(self.world.stage)
+        # 🔥 v3.9.0: 성공용 게이트 (엄격 - 평가 전용)
+        # 물리적 부착 확인
+        if is_attached and not self.gripper.detach_called_this_step:
+            self.attach_hold_frames += 1
+        else:
+            self.attach_hold_frames = 0
         
-        # 🔧 v3.2: grip_frames 관리를 아래 보상 블록으로 이동 (이중 증가 버그 방지)
+        # 리프트 확인 (부착 후 2cm 상승)
+        lift_achieved = False
+        if is_attached and cube_pos[2] > self.initial_cube_z + 0.02:
+            lift_achieved = True
+            self.lift_hold_frames += 1
+        else:
+            self.lift_hold_frames = 0
         
         # ═══════════════════════════════════════════════════════════
         # 🎁 A. DENSE REWARD (Δ형 - 개선량 기반) - v3.7 DENSE-HEAVY
@@ -956,81 +988,58 @@ class RoArmPickPlaceEnv:
             if self.step_count % 100 == 0 and dist_to_cube < 0.08:
                 print(f"  📏 Width: {gripper_width*100:.1f}cm (ideal: {IDEAL_WIDTH*100:.0f}cm), penalty: {width_penalty:.2f}")
         
-        # 6. Cube → Target 접근 보상 (grasp_valid 시만, 개선량 기반) - 강화!
-        if grasp_valid and self.prev_cube_to_target_dist is not None:
+        # 6. Cube → Target 접근 보상 (부착 시만, 개선량 기반)
+        if is_attached and self.prev_cube_to_target_dist is not None:
             cube_progress = self.prev_cube_to_target_dist - dist_cube_to_target
-            reward += 15.0 * cube_progress  # 🔥 v3.7: 8.0 → 15.0 (거의 2배 강화)
+            reward += 15.0 * cube_progress  # 부착 후 목표로 이동
         
         # 거리 이력 업데이트
         self.prev_ee_to_cube_dist = dist_to_cube
         self.prev_cube_to_target_dist = dist_cube_to_target
         
         # ═══════════════════════════════════════════════════════════
-        # 🎁 B. SHAPED-SPARSE REWARDS (1회성 이벤트) - v3.7 거의 제거
+        # 🎁 B. v3.9.0: Milestone Rewards (엄격 - Attach 기반)
         # ═══════════════════════════════════════════════════════════
         
-        # 🔥 v3.7: Milestone 보상 대폭 감소 (Dense reward가 주도)
-        # 이유: REACH +2 후에도 에이전트가 "도착=이득" 착각 → 행동 정체
-        # 해결: Milestone을 "축하 메시지" 수준으로만 유지
-        
-        # 1️⃣ 근접 보상 (+0.5): EE가 큐브에 처음 근접 (감소: 2→0.5)
+        # 1️⃣ REACH (+0.5): EE가 큐브에 처음 근접 (느슨 - 탐색 유도)
         if not self.first_reach and dist_to_cube < 0.05:
-            reward += 0.5  # 🔥 v3.7: 2.0 → 0.5 (축하 메시지 수준)
+            reward += 0.5
             self.first_reach = True
             self.episode_reach_count += 1
-            print(f"  🎯 Milestone: REACH! (+0.5)")
+            self.episode_metrics['reach'] = True
+            print(f"  🎯 REACH (+0.5)")
         
-        # 🚨 v3.7: GRIP 조건 디버깅 로그 (그리퍼 width 추적)
-        if not self.valid_grip:
-            if self.current_step % 50 == 0:  # 50 스텝마다 (더 자주 체크)
-                CUBE_WIDTH = 0.04
-                is_grasping = (0.035 < gripper_width < 0.045)
-                print(f"  🔍 GRIP 체크 (v3.7): dist={dist_to_cube:.3f}, "
-                      f"width={gripper_width:.4f} (cube={CUBE_WIDTH*100:.0f}cm), "
-                      f"valid={grasp_valid}")
+        # 2️⃣ ATTACH (+50): 물리적 부착 달성 (엄격 - 진짜 그립만)
+        if not self.first_attach and is_attached:
+            reward += 50.0
+            self.first_attach = True
+            self.episode_attach_count += 1
+            self.episode_metrics['attach'] = True
+            print(f"  🤝 ATTACH (+50.0) ← 물리적 부착!")
         
-        # 2️⃣ 그립 보상 (+50/+100): 유효 그립 3프레임 유지 [게이팅]
-        # 🔥 v3.8.1 FIX: GRIP 조건 강화에 따른 보상 조정
-        # 목적: 더 정확한 그립을 요구하므로 보상도 더 엄격하게
-        if grasp_valid:
-            self.grip_frames += 1
-        else:
-            self.grip_frames = 0
-            
-        if not self.valid_grip and grasp_valid and self.grip_frames >= 3:
-            # Guard: 매우 근접하고 z-정렬 완벽할 때만 +100
-            if dist_to_cube < 0.02 and abs(cube_relative_to_ee[2]) < 0.008:
-                reward += 100.0  # 🔥 v3.8.1: 2cm 이내 + z정렬 0.8cm 이내
-                print(f"  ✊ Milestone: PERFECT GRIP! (+100.0) [dist={dist_to_cube:.3f}, width={gripper_width:.4f}]")
-            else:
-                reward += 50.0   # 🔥 v3.8.1: 일반 그립 +50 (3cm 이내)
-                print(f"  ✊ Milestone: GRIP! (+50.0) [dist={dist_to_cube:.3f}, width={gripper_width:.4f}]")
-            self.valid_grip = True
-            self.episode_grip_count += 1
-        
-        # 3️⃣ 리프트 보상 (+15): 큐브 5cm 이상 들어올림 [게이팅]
-        # Dense reward가 주도하므로 milestone은 축하 수준 (30 → 15)
-        if not self.lifted and grasp_valid and cube_pos[2] > 0.05:
-            reward += 15.0  # 🔥 v3.7: 30.0 → 15.0
-            self.lifted = True
+        # 3️⃣ LIFT (+15): 리프트 달성 (부착 후 2cm 상승)
+        if not self.first_lift and lift_achieved:
+            reward += 15.0
+            self.first_lift = True
             self.episode_lift_count += 1
-            print(f"  ⬆️ Milestone: LIFT! (+15.0)")
+            self.episode_metrics['lift'] = True
+            print(f"  ⬆️ LIFT (+15.0) [z={cube_pos[2]:.3f}, Δz={cube_pos[2]-self.initial_cube_z:.3f}]")
         
-        # 4️⃣ 목표 근접 보상 (제거): LIFT와 SUCCESS 사이 간격이 크지 않아 제거
-        # if not self.goal_near and grasp_valid and dist_cube_to_target < 0.08:
-        #     reward += 20.0
-        #     self.goal_near = True
-        #     print(f"  🎯 Milestone: GOAL NEAR! (+20.0)")
+        # 4️⃣ SUCCESS (+50): 최종 성공 (attach & lift & hold 10프레임)
+        if lift_achieved and self.lift_hold_frames >= 10 and not self.success:
+            reward += 50.0
+            self.success = True
+            self.episode_success_count += 1
+            self.episode_metrics['hold'] = True
+            self.episode_metrics['success'] = True
+            print(f"  � SUCCESS (+50.0) ← 진짜 성공! (hold={self.lift_hold_frames})")
         
-        # 5️⃣ Success 보상 (+50): 목표 threshold 이내 N프레임 연속 유지
-        # 🔥 v3.7: 100 → 50 (Dense reward가 주도, Milestone은 축하 수준)
-        if dist_cube_to_target < self.cfg.success_threshold:
-            self.success_frames += 1
-            if self.success_frames >= self.cfg.success_hold_frames:
-                reward += 50.0  # 🔥 v3.7: 100.0 → 50.0
-                print(f"  🏆 Milestone: SUCCESS! (+100.0) [{self.success_frames} frames]")
-        else:
-            self.success_frames = 0
+        # 🔥 v3.9.0: 진단 로그 (50 스텝마다)
+        if self.current_step % 50 == 0 and not is_attached:
+            print(f"  🔍 [v3.9.0] dist={dist_to_cube:.3f}, "
+                  f"width={gripper_width:.4f}, "
+                  f"attached={is_attached}, "
+                  f"lift_z={cube_pos[2]-self.initial_cube_z:.3f}")
         
         # ═══════════════════════════════════════════════════════════
         # 🎁 C. REWARD CLIPPING (1스텝 보상 제한)
