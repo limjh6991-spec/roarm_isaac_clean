@@ -84,6 +84,11 @@ from controllers.gripper import Gripper
 from robot_utils.ee_pose import find_ee_prim, get_ee_position
 from rewards.pick_place import GateConfig, grasp_gate, compute_hybrid_reward
 
+# 🔥 v3.9.6: 리팩토링 - 기능별 모듈 분리
+from envs.reward.reward_calculator import RewardCalculator
+from envs.observation.observation_builder import ObservationBuilder
+from envs.robot.robot_controller import RobotController
+
 
 @configclass
 class RoArmPickPlaceEnvCfg(DirectRLEnvCfg):
@@ -454,6 +459,34 @@ class RoArmPickPlaceEnv:
         self.target.set_default_state(position=np.array(self.cfg.target_position))
         
         print(f"  ✅ 타겟 생성: {self.cfg.target_position}")
+        
+        # ═══════════════════════════════════════════════════════════
+        # 🔥 v3.9.6: 리팩토링 - 컴포넌트 초기화
+        # ═══════════════════════════════════════════════════════════
+        print(f"\n🔧 컴포넌트 초기화 중...")
+        
+        # 1. 보상 계산기
+        self.reward_calc = RewardCalculator()
+        print(f"  ✅ RewardCalculator 초기화")
+        
+        # 2. 관측 생성기
+        ee_prim = self.world.stage.GetPrimAtPath(self.ee_prim_path)
+        self.obs_builder = ObservationBuilder(
+            robot=self.robot,
+            gripper=self.gripper,
+            cube=self.cube,
+            target=self.target,
+            ee_prim=ee_prim
+        )
+        print(f"  ✅ ObservationBuilder 초기화")
+        
+        # 3. 로봇 제어기
+        self.robot_controller = RobotController(
+            robot=self.robot,
+            gripper=self.gripper
+        )
+        print(f"  ✅ RobotController 초기화")
+        print(f"✅ v3.9.6 리팩토링 완료!\n")
     
     def reset(self) -> np.ndarray:
         """환경 리셋"""
@@ -595,29 +628,9 @@ class RoArmPickPlaceEnv:
         self.episode_success_count = 0
         
         # ═══════════════════════════════════════════════════════════
-        # 🔍 v3.9.6: 로깅 변수 리셋 (최소화)
+        # 🔍 v3.9.6: 보상 계산기 리셋 (리팩토링)
         # ═══════════════════════════════════════════════════════════
-        self.episode_min_distance = float('inf')
-        self.episode_distance_sum = 0.0
-        self.episode_distance_count = 0
-        
-        # 단계별 보상 카운터 리셋
-        self.stage_7cm_count = 0
-        self.stage_5cm_count = 0
-        self.stage_3cm_count = 0
-        
-        # 그리퍼 보상 통계 리셋
-        self.gripper_reward_count = 0
-        self.gripper_reward_total = 0.0
-        
-        # 보상 분해 리셋
-        self.episode_reward_breakdown = {
-            'distance_reward': 0.0,
-            'stage_bonus': 0.0,
-            'gripper_bonus': 0.0,
-            'synergy_bonus': 0.0,
-            'milestone_bonus': 0.0,
-        }
+        self.reward_calc.reset()
         
         # 🔥 v3.5: FixedJoint 상태 리셋 (이전 에피소드 attach 제거)
         if self.gripper and self.gripper.is_attached:
