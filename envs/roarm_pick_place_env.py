@@ -306,6 +306,11 @@ class RoArmPickPlaceEnv:
             'learning_rate': [],
         }
         
+        # 🔥 v3.5: 모듈화된 컴포넌트 초기화 (로봇 로드 전 설정)
+        self.gripper = None           # Gripper controller
+        self.ee_prim_path = None      # EE prim 경로
+        self.gate_config = GateConfig(cube_size=self.cfg.object_size[0])
+        
         # 7. 환경 파라미터 로깅
         self.env_params_log = {
             'cube_initial_positions': [],
@@ -321,11 +326,6 @@ class RoArmPickPlaceEnv:
             'episode_rewards': [],
             'episode_lengths': [],
         }
-        
-        # 🔥 v3.5: 모듈화된 컴포넌트 초기화 (로봇 로드 후 설정됨)
-        self.gripper = None           # Gripper controller
-        self.ee_prim_path = None      # EE prim 경로
-        self.gate_config = GateConfig(cube_size=self.cfg.object_size[0])
         
         print(f"\n📊 환경 정보:")
         print(f"  - Observation dim: {self.observation_space_dim}")
