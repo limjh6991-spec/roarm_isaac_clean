@@ -140,3 +140,13 @@ cd ~/roarm_isaac_clean
 
 **Last Updated**: 2025-10-19  
 **Status**: Phase 0 학습 완료, 장기 학습 준비 중
+
+## 📚 Documentation
+
+See [Documentation Index](DOCUMENTATION_INDEX.md) for all available documentation.
+
+### Quick Links
+- [Training Guide](docs/root_archive/EASY_MODE_TRAINING_GUIDE.md)
+- [Visualization](docs/root_archive/MODEL_VISUALIZATION_GUIDE.md)
+- [Hardware Control](docs/root_archive/ROARM_M3_HARDWARE_CONTROL.md)
+- [Phase 2 Plan](docs/PHASE2_VISION_BASED_RL_PLAN.md)

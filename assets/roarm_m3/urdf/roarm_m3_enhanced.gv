@@ -1,0 +1,44 @@
+digraph G {
+node [shape=box];
+"base_link" [label="base_link"];
+"link_base" [label="link_base"];
+"link_shoulder" [label="link_shoulder"];
+"link_elbow" [label="link_elbow"];
+"link_wrist1" [label="link_wrist1"];
+"link_wrist2" [label="link_wrist2"];
+"gripper_base_link" [label="gripper_base_link"];
+"camera_link" [label="camera_link"];
+"camera_depth_frame" [label="camera_depth_frame"];
+"camera_color_frame" [label="camera_color_frame"];
+"camera_color_optical_frame" [label="camera_color_optical_frame"];
+"camera_depth_optical_frame" [label="camera_depth_optical_frame"];
+"gripper_left_finger" [label="gripper_left_finger"];
+"gripper_right_finger" [label="gripper_right_finger"];
+node [shape=ellipse, color=blue, fontcolor=blue];
+"base_link" -> "joint_base" [label="xyz: 0 0 0.02 \nrpy: 0 -0 0"]
+"joint_base" -> "link_base"
+"link_base" -> "joint_shoulder" [label="xyz: 0 0 0.05 \nrpy: 0 -0 0"]
+"joint_shoulder" -> "link_shoulder"
+"link_shoulder" -> "joint_elbow" [label="xyz: 0 0 0.15 \nrpy: 0 -0 0"]
+"joint_elbow" -> "link_elbow"
+"link_elbow" -> "joint_wrist1" [label="xyz: 0 0 0.15 \nrpy: 0 -0 0"]
+"joint_wrist1" -> "link_wrist1"
+"link_wrist1" -> "joint_wrist2" [label="xyz: 0 0 0.12 \nrpy: 0 -0 0"]
+"joint_wrist2" -> "link_wrist2"
+"link_wrist2" -> "gripper_base_joint" [label="xyz: 0 0 0.08 \nrpy: 0 -0 0"]
+"gripper_base_joint" -> "gripper_base_link"
+"gripper_base_link" -> "camera_joint" [label="xyz: 0.05 0 0.02 \nrpy: 0 0.524 0"]
+"camera_joint" -> "camera_link"
+"camera_link" -> "camera_depth_joint" [label="xyz: 0.0158 0.0475 0.0145 \nrpy: 0 -0 0"]
+"camera_depth_joint" -> "camera_depth_frame"
+"camera_depth_frame" -> "camera_color_joint" [label="xyz: 0 -0.059 0 \nrpy: 0 -0 0"]
+"camera_color_joint" -> "camera_color_frame"
+"camera_color_frame" -> "camera_color_optical_joint" [label="xyz: 0 0 0 \nrpy: -1.5708 -0 -1.5708"]
+"camera_color_optical_joint" -> "camera_color_optical_frame"
+"camera_depth_frame" -> "camera_depth_optical_joint" [label="xyz: 0 0 0 \nrpy: -1.5708 -0 -1.5708"]
+"camera_depth_optical_joint" -> "camera_depth_optical_frame"
+"gripper_base_link" -> "gripper_left_finger_joint" [label="xyz: 0 0.015 0.03 \nrpy: 0 -0 0"]
+"gripper_left_finger_joint" -> "gripper_left_finger"
+"gripper_base_link" -> "gripper_right_finger_joint" [label="xyz: 0 -0.015 0.03 \nrpy: 0 -0 0"]
+"gripper_right_finger_joint" -> "gripper_right_finger"
+}

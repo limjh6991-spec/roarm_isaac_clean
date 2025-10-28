@@ -1,0 +1,380 @@
+<?xml version="1.0"?>
+<!-- 
+  Enhanced RoArm M3 URDF with detailed specifications
+  
+  Improvements from original:
+  1. Accurate inertial properties (mass, COM, inertia tensors)
+  2. Proper collision geometries
+  3. Enhanced gripper (2-finger parallel jaw with mimic joint)
+  4. RealSense D455 camera integration
+  5. Material definitions
+  6. Joint damping and friction
+  
+  Version: 2.0
+  Date: 2025-10-28
+-->
+<robot name="roarm_m3_enhanced">
+
+  <!-- ==================== Materials ==================== -->
+  <material name="black">
+    <color rgba="0.2 0.2 0.2 1.0"/>
+  </material>
+  
+  <material name="gray">
+    <color rgba="0.6 0.6 0.6 1.0"/>
+  </material>
+  
+  <material name="aluminum">
+    <color rgba="0.8 0.85 0.9 1.0"/>
+  </material>
+  
+  <material name="red">
+    <color rgba="0.8 0.1 0.1 1.0"/>
+  </material>
+
+  <!-- ==================== BASE LINK ==================== -->
+  <link name="base_link">
+    <inertial>
+      <mass value="0.5"/>
+      <origin xyz="0 0 0.01" rpy="0 0 0"/>
+      <inertia ixx="0.00042" iyy="0.00042" izz="0.00031" 
+               ixy="0" ixz="0" iyz="0"/>
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0.01" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.06 0.06 0.02"/>
+      </geometry>
+      <material name="black"/>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0.01" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.06 0.06 0.02"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <!-- ==================== JOINT 1: BASE (Continuous) ==================== -->
+  <joint name="joint_base" type="continuous">
+    <parent link="base_link"/>
+    <child link="link_base"/>
+    <origin xyz="0 0 0.02" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+    <dynamics damping="0.5" friction="0.1"/>
+  </joint>
+
+  <link name="link_base">
+    <inertial>
+      <mass value="0.3"/>
+      <origin xyz="0 0 0.025" rpy="0 0 0"/>
+      <inertia ixx="0.00019" iyy="0.00019" izz="0.00014" 
+               ixy="0" ixz="0" iyz="0"/>
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0.025" rpy="0 0 0"/>
+      <geometry>
+        <cylinder radius="0.03" length="0.05"/>
+      </geometry>
+      <material name="gray"/>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0.025" rpy="0 0 0"/>
+      <geometry>
+        <cylinder radius="0.03" length="0.05"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <!-- ==================== JOINT 2: SHOULDER (±90°) ==================== -->
+  <joint name="joint_shoulder" type="revolute">
+    <parent link="link_base"/>
+    <child link="link_shoulder"/>
+    <origin xyz="0 0 0.05" rpy="0 0 0"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-1.57" upper="1.57" effort="10.0" velocity="2.0"/>
+    <dynamics damping="0.7" friction="0.2"/>
+  </joint>
+
+  <link name="link_shoulder">
+    <inertial>
+      <mass value="0.4"/>
+      <origin xyz="0 0 0.075" rpy="0 0 0"/>
+      <inertia ixx="0.00075" iyy="0.00075" izz="0.00008" 
+               ixy="0" ixz="0" iyz="0"/>
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0.075" rpy="0 0 0"/>
+      <geometry>
+        <cylinder radius="0.02" length="0.15"/>
+      </geometry>
+      <material name="gray"/>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0.075" rpy="0 0 0"/>
+      <geometry>
+        <cylinder radius="0.02" length="0.15"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <!-- ==================== JOINT 3: ELBOW (±90°) ==================== -->
+  <joint name="joint_elbow" type="revolute">
+    <parent link="link_shoulder"/>
+    <child link="link_elbow"/>
+    <origin xyz="0 0 0.15" rpy="0 0 0"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-1.57" upper="1.57" effort="8.0" velocity="2.0"/>
+    <dynamics damping="0.6" friction="0.15"/>
+  </joint>
+
+  <link name="link_elbow">
+    <inertial>
+      <mass value="0.35"/>
+      <origin xyz="0 0 0.075" rpy="0 0 0"/>
+      <inertia ixx="0.00066" iyy="0.00066" izz="0.00007" 
+               ixy="0" ixz="0" iyz="0"/>
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0.075" rpy="0 0 0"/>
+      <geometry>
+        <cylinder radius="0.02" length="0.15"/>
+      </geometry>
+      <material name="gray"/>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0.075" rpy="0 0 0"/>
+      <geometry>
+        <cylinder radius="0.02" length="0.15"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <!-- ==================== JOINT 4: WRIST1 (±90°) ==================== -->
+  <joint name="joint_wrist1" type="revolute">
+    <parent link="link_elbow"/>
+    <child link="link_wrist1"/>
+    <origin xyz="0 0 0.15" rpy="0 0 0"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-1.57" upper="1.57" effort="6.0" velocity="2.5"/>
+    <dynamics damping="0.5" friction="0.1"/>
+  </joint>
+
+  <link name="link_wrist1">
+    <inertial>
+      <mass value="0.2"/>
+      <origin xyz="0 0 0.06" rpy="0 0 0"/>
+      <inertia ixx="0.00024" iyy="0.00024" izz="0.00003" 
+               ixy="0" ixz="0" iyz="0"/>
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0.06" rpy="0 0 0"/>
+      <geometry>
+        <cylinder radius="0.018" length="0.12"/>
+      </geometry>
+      <material name="gray"/>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0.06" rpy="0 0 0"/>
+      <geometry>
+        <cylinder radius="0.018" length="0.12"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <!-- ==================== JOINT 5: WRIST2 (Continuous) ==================== -->
+  <joint name="joint_wrist2" type="continuous">
+    <parent link="link_wrist1"/>
+    <child link="link_wrist2"/>
+    <origin xyz="0 0 0.12" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+    <dynamics damping="0.4" friction="0.08"/>
+  </joint>
+
+  <link name="link_wrist2">
+    <inertial>
+      <mass value="0.15"/>
+      <origin xyz="0 0 0.04" rpy="0 0 0"/>
+      <inertia ixx="0.00010" iyy="0.00010" izz="0.00002" 
+               ixy="0" ixz="0" iyz="0"/>
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0.04" rpy="0 0 0"/>
+      <geometry>
+        <cylinder radius="0.015" length="0.08"/>
+      </geometry>
+      <material name="gray"/>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0.04" rpy="0 0 0"/>
+      <geometry>
+        <cylinder radius="0.015" length="0.08"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <!-- ==================== GRIPPER BASE ==================== -->
+  <joint name="gripper_base_joint" type="fixed">
+    <parent link="link_wrist2"/>
+    <child link="gripper_base_link"/>
+    <origin xyz="0 0 0.08" rpy="0 0 0"/>
+  </joint>
+
+  <link name="gripper_base_link">
+    <inertial>
+      <mass value="0.08"/>
+      <origin xyz="0 0 0.015" rpy="0 0 0"/>
+      <inertia ixx="0.00001" iyy="0.00001" izz="0.00001" 
+               ixy="0" ixz="0" iyz="0"/>
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0.015" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.03 0.04 0.03"/>
+      </geometry>
+      <material name="black"/>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0.015" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.03 0.04 0.03"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <!-- ==================== GRIPPER: LEFT FINGER ==================== -->
+  <joint name="gripper_left_finger_joint" type="prismatic">
+    <parent link="gripper_base_link"/>
+    <child link="gripper_left_finger"/>
+    <origin xyz="0 0.015 0.03" rpy="0 0 0"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="0.0" upper="0.04" effort="20.0" velocity="0.5"/>
+    <dynamics damping="1.0" friction="0.5"/>
+  </joint>
+
+  <link name="gripper_left_finger">
+    <inertial>
+      <mass value="0.02"/>
+      <origin xyz="0 0 0.025" rpy="0 0 0"/>
+      <inertia ixx="0.000004" iyy="0.000004" izz="0.000001" 
+               ixy="0" ixz="0" iyz="0"/>
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0.025" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.01 0.01 0.05"/>
+      </geometry>
+      <material name="black"/>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0.025" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.01 0.01 0.05"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <!-- ==================== GRIPPER: RIGHT FINGER (Mimic) ==================== -->
+  <joint name="gripper_right_finger_joint" type="prismatic">
+    <parent link="gripper_base_link"/>
+    <child link="gripper_right_finger"/>
+    <origin xyz="0 -0.015 0.03" rpy="0 0 0"/>
+    <axis xyz="0 -1 0"/>
+    <limit lower="0.0" upper="0.04" effort="20.0" velocity="0.5"/>
+    <mimic joint="gripper_left_finger_joint" multiplier="1" offset="0"/>
+    <dynamics damping="1.0" friction="0.5"/>
+  </joint>
+
+  <link name="gripper_right_finger">
+    <inertial>
+      <mass value="0.02"/>
+      <origin xyz="0 0 0.025" rpy="0 0 0"/>
+      <inertia ixx="0.000004" iyy="0.000004" izz="0.000001" 
+               ixy="0" ixz="0" iyz="0"/>
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0.025" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.01 0.01 0.05"/>
+      </geometry>
+      <material name="black"/>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0.025" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.01 0.01 0.05"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <!-- ==================== CAMERA: RealSense D455 ==================== -->
+  <!-- Camera is mounted on gripper base, pointing forward and slightly downward -->
+  <joint name="camera_joint" type="fixed">
+    <parent link="gripper_base_link"/>
+    <child link="camera_link"/>
+    <!-- Position: 5cm forward, 2cm above gripper base -->
+    <!-- Orientation: 30 degrees downward (0.524 rad) -->
+    <origin xyz="0.05 0 0.02" rpy="0 0.524 0"/>
+  </joint>
+
+  <link name="camera_link">
+    <inertial>
+      <mass value="0.072"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <inertia ixx="0.000008" iyy="0.000008" izz="0.000008" 
+               ixy="0" ixz="0" iyz="0"/>
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <!-- D455 dimensions: 124mm x 29mm x 26mm -->
+        <box size="0.026 0.124 0.029"/>
+      </geometry>
+      <material name="aluminum"/>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.026 0.124 0.029"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <!-- Camera optical frames (following ROS REP-103) -->
+  <joint name="camera_depth_joint" type="fixed">
+    <parent link="camera_link"/>
+    <child link="camera_depth_frame"/>
+    <!-- Offset from camera body to depth sensor -->
+    <origin xyz="0.0158 0.0475 0.0145" rpy="0 0 0"/>
+  </joint>
+
+  <link name="camera_depth_frame"/>
+
+  <joint name="camera_depth_optical_joint" type="fixed">
+    <parent link="camera_depth_frame"/>
+    <child link="camera_depth_optical_frame"/>
+    <!-- Rotate from camera frame to optical frame (ROS convention) -->
+    <!-- X: right → Z: forward, Y: down → X: right, Z: up → Y: down -->
+    <origin xyz="0 0 0" rpy="-1.5708 0 -1.5708"/>
+  </joint>
+
+  <link name="camera_depth_optical_frame"/>
+
+  <joint name="camera_color_joint" type="fixed">
+    <parent link="camera_depth_frame"/>
+    <child link="camera_color_frame"/>
+    <!-- Color sensor offset from depth sensor (D455 calibration) -->
+    <origin xyz="0 -0.059 0" rpy="0 0 0"/>
+  </joint>
+
+  <link name="camera_color_frame"/>
+
+  <joint name="camera_color_optical_joint" type="fixed">
+    <parent link="camera_color_frame"/>
+    <child link="camera_color_optical_frame"/>
+    <origin xyz="0 0 0" rpy="-1.5708 0 -1.5708"/>
+  </joint>
+
+  <link name="camera_color_optical_frame"/>
+
+</robot>
