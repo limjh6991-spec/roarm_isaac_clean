@@ -9,6 +9,7 @@ import torch
 from typing import Dict, Tuple
 import sys
 import os
+import gymnasium as gym
 
 # 🔥 v3.5: 프로젝트 루트를 Python path에 추가 (모듈 import용)
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
@@ -100,7 +101,9 @@ class RoArmPickPlaceEnvCfg(DirectRLEnvCfg):
     episode_length_s: float = 10.0
     
     # Robot settings
-    urdf_path: str = "/home/roarm_m3/roarm_isaac_clean/assets/roarm_m3/urdf/roarm_m3_multiprim.urdf"
+    # 🤖 V4.2: STL 메시 기반 정확한 URDF (sim-to-real gap 최소화)
+    # codex_mcp에서 생성된 정확한 관성 텐서 포함
+    urdf_path: str = "/home/roarm_m3/roarm_isaac_clean/assets/roarm_m3/urdf/roarm_m3.generated.urdf"
     robot_position: Tuple[float, float, float] = (0.0, 0.0, 0.0)
     
     # Object settings
@@ -142,20 +145,22 @@ class RoArmPickPlaceEnvCfg(DirectRLEnvCfg):
     reach_milestone_threshold: int = 5    # REACH 5회 달성 (10회 → 5회)
 
 
-class RoArmPickPlaceEnv:
+class RoArmPickPlaceEnv(gym.Env):
     """
     RoArm-M3 Pick and Place 강화학습 환경 (Dense Reward)
     
+    🤖 V4.2: STL 메시 URDF + 6 DOF (그리퍼는 revolute joint로 통합)
+    
     Task: 큐브를 집어서 타겟 위치로 옮기기
     
-    Observation Space (25 dim):
-        - Joint positions (6 dim): joint_1 ~ joint_6
-        - Gripper state (2 dim): left_finger, right_finger positions
+    Observation Space (24 dim):
+        - Joint positions (6 dim): joint_1 ~ joint_6 (arm + gripper)
         - End-effector position (3 dim): x, y, z
         - Cube position (3 dim): x, y, z
         - Target position (3 dim): x, y, z
         - EE → Cube vector (3 dim): dx, dy, dz
         - Cube → Target vector (3 dim): dx, dy, dz
+        - Gripper state (3 dim): joint_6 position, velocity, torque
         - Gripper width (1 dim): distance between fingers
         - Is grasped (1 dim): 1.0 if grasping, 0.0 otherwise
     
@@ -164,6 +169,7 @@ class RoArmPickPlaceEnv:
         - Gripper position deltas (2 dim): left_finger, right_finger
     """
     
+    metadata = {'render.modes': ['human']}
     def __init__(self, cfg: RoArmPickPlaceEnvCfg = None):
         """환경 초기화"""
         self.cfg = cfg if cfg else RoArmPickPlaceEnvCfg()
@@ -174,10 +180,13 @@ class RoArmPickPlaceEnv:
         
         print("=" * 60)
         print("🤖 RoArm-M3 Pick and Place Environment")
-        print("🔥 ENV_VERSION = v3.9.0 (ROBUST GRIP - False Positive 방지)")
-        print("   - FIX: Attach 기반 성공 정의 (물리적 부착만 인정)")
-        print("   - 단계별 지표: Reach → Attach → Lift → Success")
-        print("   - False Positive 방지: Attach & Lift & Hold")
+        print("🔥 ENV_VERSION = v4.2 (6 DOF STL 메시 URDF)")
+        print("   - REACH: 지속적 보상 +2.0 (유지) + 5.0 (최초)")
+        print("   - 그리퍼 전략: ACTION 기반 (action[5] < -0.3)")
+        print("     - 닫기 시도: +0.5")
+        print("     - position < 0.01: +2.0 (총 +2.5)")
+        print("   - ATTACH: +50.0 (부착 성공)")
+        print("   - 멀어짐 패널티: -2.0")
         print("=" * 60)
         
         # 로봇 로드
@@ -199,18 +208,28 @@ class RoArmPickPlaceEnv:
         #   - Cube pos relative to EE (3) ← 핵심!
         #   - Target pos relative to EE (3) ← 핵심!
         #   - Cube to Target vector (3)
-        #   - EE velocity (3)
-        #   - Cube velocity (3)
-        #   - Gripper width (1)
-        #   - Is grasped (1)
-        #   - Distance to cube (1)
-        #   - Distance cube to target (1)
-        #   - Previous reward (1)
-        self.observation_space_dim = 28
-        # 🔥 v3.7: Action space 축소 (8 → 7)
-        # 구조: [6 DoF arm joints] + [1 gripper scalar]
-        # 그리퍼 스칼라: -1 (완전 닫힘) ~ +1 (완전 열림)
+        # 🤖 V4.2: 6 DOF (STL 메시 URDF)
+        # Observation: 24 dim
+        #   - Joint positions (6): joint_1 ~ joint_6 (마지막이 gripper)
+        #   - EE position (3)
+        #   - Cube position (3)
+        #   - Target position (3)
+        #   - EE → Cube vector (3)
+        #   - Cube → Target vector (3)
+        #   - Gripper state (3): position, velocity, torque
+        self.observation_space_dim = 24
+        # Action: 6 DOF 
+        # 구조: [5 DoF arm joints] + [1 gripper joint]
+        self.action_dim = 6
         self.action_space_dim = 7
+        
+        # Gymnasium spaces
+        self.observation_space = gym.spaces.Box(
+            low=-np.inf, high=np.inf, shape=(24,), dtype=np.float32
+        )
+        self.action_space = gym.spaces.Box(
+            low=-1.0, high=1.0, shape=(6,), dtype=np.float32
+        )
         
         # 이전 상태 저장 (속도 계산 & Dense Reward)
         self.prev_ee_pos = None
@@ -488,27 +507,36 @@ class RoArmPickPlaceEnv:
         print(f"  ✅ RobotController 초기화")
         print(f"✅ v3.9.6 리팩토링 완료!\n")
     
-    def reset(self) -> np.ndarray:
-        """환경 리셋"""
+    def reset(self, seed=None, options=None) -> np.ndarray:
+        """환경 리셋 (Gymnasium API 호환: seed/options 파라미터 추가)"""
+        if seed is not None:
+            np.random.seed(seed)
+        
         print(f"\n🔄 환경 리셋 (Step {self.current_step})")
         
         # World 리셋
         self.world.reset()
         
-        # 🔥 v3.8.0 TEST: Joint 2 = -1.57 (수직) + Joint 3 = -1.57 (팔꿈치 수평)
-        # 로봇팔 수직 + 팔꿈치 앞으로 구부려서 그리퍼를 앞으로 뻗기
-        home_positions = np.array([0.0, -1.57, -1.57, 1.57, 0.0, 0.0, 0.0, 0.0])  # 8 DOF
-        print(f"  🔧 TEST: Joint 2=-1.57 (수직), Joint 3=-1.57 (팔꿈치 앞으로)")
-        print(f"  🔧 설정값: {home_positions[:6].tolist()}")
+        # 🤖 V4.2: 6 DOF home positions (STL 메시 URDF)
+        # RoArm-M3 실제 초기 자세: 'ㄱ'자 모양
+        # ⚠️ Joint Limits 고려: Joint 2는 -1.0 ~ 2.95 범위
+        # Joint 0 (Base): 0.0 (정면)
+        # Joint 1 (Link1): 0.0 (지면과 90도 수직)
+        # Joint 2 (Link2): -1.0 (URDF limit! -1.57은 불가능)
+        # Joint 3 (Wrist): 0.0
+        # Joint 4 (Wrist2): 0.0
+        # Joint 5 (Gripper): 0.0125 (약간 열림)
+        home_positions = np.array([0.0, 0.0, -1.0, 0.0, 0.0, 0.0125])  # 6 DOF
+        print(f"  🤖 V4.2: 'ㄱ'자 Home Position (Joint2=-1.0, URDF limit 준수)")
+        print(f"  🔧 설정값: {home_positions.tolist()}")
         self.robot.set_joint_positions(home_positions)
-        self.robot.set_joint_velocities(np.zeros(8))
+        self.robot.set_joint_velocities(np.zeros(6))  # 6 DOF
         
-        # 🔥 v3.8.0 FIX: Physics 안정화 시간 증가 (10 → 60 steps = 1초)
-        # 로봇이 안정된 후 1초 뒤에 움직이기 시작 (초기 접촉 방지)
+        # Physics 안정화 시간 (60 steps = 1초)
         for _ in range(60):
             self.world.step(render=False)
         
-        # 🔥 v3.9.0: 초기 큐브 Z 위치 저장 (리프트 계산용)
+        # 초기 큐브 Z 위치 저장 (리프트 계산용)
         cube_pos = self.cube.get_world_pose()[0]
         self.initial_cube_z = cube_pos[2]
         print(f"  📦 초기 큐브 Z: {self.initial_cube_z:.3f}m")
@@ -597,12 +625,15 @@ class RoArmPickPlaceEnv:
         self.prev_cube_to_target_dist = None
         
         # ═══════════════════════════════════════════════════════════
-        # 🎯 v3.9.0: 마일스톤 플래그 리셋
+        # 🎯 v4.1.0: 마일스톤 플래그 리셋
         # ═══════════════════════════════════════════════════════════
         self.first_reach = False
         self.first_attach = False
         self.first_lift = False
         self.success = False
+        
+        # 🆕 V4.1: 그리퍼 전략 추적 (ACTION 기반)
+        self._gripper_close_success = False
         
         self.attach_hold_frames = 0
         self.lift_hold_frames = 0
@@ -640,7 +671,8 @@ class RoArmPickPlaceEnv:
                 print(f"    ⚠️ Reset 시 FixedJoint 정리 실패: {e}")
         
         # 초기 observation 반환
-        return self._get_observation()
+        # Gymnasium API: (observation, info) 반환
+        return self._get_observation(), {}
     
     def _get_observation(self) -> np.ndarray:
         """
@@ -654,83 +686,50 @@ class RoArmPickPlaceEnv:
         # ═══════════════════════════════════════════════════════════
         # 1. 기본 정보 수집 (월드 좌표)
         # ═══════════════════════════════════════════════════════════
-        joint_positions = self.robot.get_joint_positions()[:8]
+        joint_positions = self.robot.get_joint_positions()[:6]  # 🤖 V4.2: 6 DOF
         ee_pos = self._get_ee_position()  # 월드 좌표
         cube_pos, _ = self.cube.get_world_pose()  # 월드 좌표
-        target_pos, _ = self.target.get_world_pose()  # 🔧 v3.2: 실제 타깃 위치 (Curriculum 적용)
+        target_pos, _ = self.target.get_world_pose()  # 실제 타깃 위치
         
         # ═══════════════════════════════════════════════════════════
-        # 2. EE 기준 상대 좌표 변환 (핵심!)
+        # 2. EE 기준 상대 좌표 변환
         # ═══════════════════════════════════════════════════════════
-        # 정책이 학습하기 쉽도록 "EE에서 본" 큐브/타겟 위치 제공
         cube_relative_to_ee = cube_pos - ee_pos       # EE → Cube 벡터
         target_relative_to_ee = target_pos - ee_pos   # EE → Target 벡터
         cube_to_target = target_pos - cube_pos        # Cube → Target 벡터
         
         # ═══════════════════════════════════════════════════════════
-        # 3. 속도 계산 (시간적 정보)
+        # 3. Gripper state (joint 6)
         # ═══════════════════════════════════════════════════════════
-        if self.prev_ee_pos is not None:
-            ee_velocity = (ee_pos - self.prev_ee_pos) * 60.0  # 60 FPS 가정
-            cube_velocity = (cube_pos - self.prev_cube_pos) * 60.0
-        else:
-            ee_velocity = np.zeros(3)
-            cube_velocity = np.zeros(3)
+        gripper_pos = joint_positions[5]  # Joint 6 (gripper)
+        gripper_vel = self.robot.get_joint_velocities()[5]
         
-        self.prev_ee_pos = ee_pos.copy()
-        self.prev_cube_pos = cube_pos.copy()
+        # Get gripper torque from articulation
+        try:
+            gripper_torque = self.robot.get_applied_joint_efforts()[5]
+        except:
+            gripper_torque = 0.0
         
-        # ===============================================================
-        # 4. Gripper state (v3.7.2: use tracked width)
-        # ===============================================================
-        # 🔥 v3.7.2 FIX: Physics lag 문제로 인해 추적된 목표값 사용
-        # joint_positions에서 읽는 대신, step()에서 설정한 gripper_width 사용
-        gripper_width = self.current_gripper_width
-        if self.step_count % 100 == 1:  # DEBUG: 버전 확인
-            print(f"[OBS-v3.7.2] step={self.step_count}, tracked gripper_width={gripper_width:.4f}")
-        
-        # v3.5: Modularized grasp detection
-        if self.gripper is not None:
-            is_grasped = 1.0 if self.gripper.is_grasped(
-                ee_pos=ee_pos,
-                cube_pos=cube_pos,
-                gripper_width=gripper_width,
-                cube_size=self.gate_config.cube_size,
-                dist_tol=self.gate_config.grip_dist_tol,
-                z_tol=self.gate_config.grip_z_tol,
-                width_margin=self.gate_config.grip_width_margin
-            ) else 0.0
-        else:
-            # Fallback: gripper not initialized yet
-            # 🔥 v3.7.3 FIX: gripper_width를 덮어쓰지 않음! (tracked value 유지)
-            is_grasped = 0.0
-        
-        # Distance calculations
+        # ═══════════════════════════════════════════════════════════
+        # 4. Grasp detection (simplified for 6 DOF)
+        # ═══════════════════════════════════════════════════════════
         ee_to_cube_dist = np.linalg.norm(cube_relative_to_ee)
-        z_alignment = abs(cube_relative_to_ee[2])
+        is_grasped = 1.0 if ee_to_cube_dist < 0.05 and abs(gripper_pos) > 0.3 else 0.0
         
-        # ===============================================================
-        # 5. Distance information
-        # ═══════════════════════════════════════════════════════════
         dist_to_cube = ee_to_cube_dist
         dist_cube_to_target = np.linalg.norm(cube_to_target)
         
         # ═══════════════════════════════════════════════════════════
-        # 6. Observation 벡터 구성 (28 dim)
+        # 5. Observation 벡터 구성 (24 dim)
         # ═══════════════════════════════════════════════════════════
         obs = np.concatenate([
-            joint_positions[:6],          # Joint positions (6)
-            joint_positions[6:8],         # Gripper state (2)
-            cube_relative_to_ee,          # Cube relative to EE (3) ← 핵심!
-            target_relative_to_ee,        # Target relative to EE (3) ← 핵심!
+            joint_positions,              # Joint positions (6)
+            cube_relative_to_ee,          # Cube relative to EE (3)
+            target_relative_to_ee,        # Target relative to EE (3)
             cube_to_target,               # Cube to Target (3)
-            ee_velocity,                  # EE velocity (3)
-            cube_velocity,                # Cube velocity (3)
-            [gripper_width],              # Gripper width (1)
-            [is_grasped],                 # Is grasped (1)
-            [dist_to_cube],               # Distance to cube (1)
-            [dist_cube_to_target],        # Distance cube to target (1)
-            [self.previous_reward],       # Previous reward (1)
+            ee_pos,                       # EE position (3) - for debugging
+            cube_pos,                     # Cube position (3) - for debugging
+            [gripper_pos, gripper_vel, gripper_torque],  # Gripper state (3)
         ])
         
         # ═══════════════════════════════════════════════════════════
@@ -765,74 +764,40 @@ class RoArmPickPlaceEnv:
         joint_positions = self.robot.get_joint_positions()
         return get_ee_position_fallback(joint_positions)
     
-    def step(self, action: np.ndarray) -> Tuple[np.ndarray, float, bool, Dict]:
-        """환경 스텝 실행"""
-        # 🔥 v3.7 FIX #1: 액션 매핑 명확화 (7 DoF + 1 그리퍼 스칼라)
-        # 문제: 정책이 그리퍼 제어 통로를 발견하지 못함 (60K 스텝 동안 width 항상 0.0)
-        # 해결: 마지막 액션을 그리퍼 스칼라로 명확히 매핑 (−1..1 → 양쪽 핑거 대칭 이동)
+    def step(self, action: np.ndarray) -> Tuple[np.ndarray, float, bool, bool, Dict]:
+        """
+        🤖 V4.2: 6 DOF 직접 제어 (STL 메시 URDF)
         
-        action = np.clip(action, -1.0, 1.0)  # [-1, 1] 범위로 제한
+        Action Space (6 dim):
+            - action[0:5]: 팔 조인트 (joint_1 ~ joint_5)
+            - action[5]: 그리퍼 조인트 (joint_6, link5_to_gripper_link)
         
-        # 현재 joint positions 가져오기
-        current_positions = self.robot.get_joint_positions()
+        Changes from V4.1.1:
+            - 8 DOF (7 arm + 1 scalar) → 6 DOF (5 arm + 1 gripper)
         
-        # 액션 분리: action[0:6] = 관절, action[6] = 그리퍼 스칼라
-        arm_action = action[:6]  # 6-DOF 팔 (joint 0-5)
-        gripper_scalar = action[6] if len(action) > 6 else 0.0  # 그리퍼 스칼라 (−1=완전닫힘, +1=완전열림)
+        Returns:
+            Gymnasium API 호환: (observation, reward, terminated, truncated, info)
+            - gripper_scalar 제거 → action[5]로 직접 제어
+            - current_gripper_width 추적 제거
+        """
         
-        # 🔥 v3.7.5 FIX: 팔 delta 축소 (0.1 → 0.05 rad/step)
-        # EE 안정성 향상, 근접·정렬 조건 충족 용이
-        arm_deltas = arm_action * 0.05  # 5도/step (0.05 rad = ~2.86도)
-        arm_targets = current_positions[:6] + arm_deltas
+        action = np.clip(action, -1.0, 1.0)
         
-        # 🔥 v3.7.7 FIX: 그리퍼 증분 제어 (절대 위치 → 증분 delta)
-        # 이전 문제: 절대 위치 제어 → 3cm ↔ 8-11cm 극단 왕복
-        # 해결책: 증분 제어 + 저속 한계 → 미세 조절 가능
-        # 🔥 v3.7.8 FIX: URDF limit 준수 (0.04 → 0.025)
-        gripper_delta = gripper_scalar * 0.01  # ±0.01 rad/step (1cm/100스텝)
-        self.current_gripper_pos = np.clip(
-            self.current_gripper_pos + gripper_delta,
-            0.0,    # 완전 닫힘
-            0.025   # 완전 열림 (URDF limit: 0.025)
-        )
+        # 현재 joint positions 가져오기 (6 DOF)
+        current_positions = self.robot.get_joint_positions()[:6]
         
+        # Action scaling: 팔은 작게, 그리퍼는 크게
+        action_scale = np.array([0.05, 0.05, 0.05, 0.05, 0.05, 0.1])
+        target_positions = current_positions + action * action_scale
         
-        # �🔥 v3.7.5 FIX: URDF 베이스 간격(3cm) 포함한 실제 폭 계산
-        # 실제 gripper width = BASE_GAP + left_finger_pos + right_finger_pos
-        # BASE_GAP = 0.03m (URDF에서 양쪽 finger 사이 초기 간격)
-        BASE_GAP = 0.03
-        self.current_gripper_width = BASE_GAP + (self.current_gripper_pos * 2.0)
+        # Joint limits 적용 (그리퍼만 명시적으로 제한)
+        target_positions[5] = np.clip(target_positions[5], 0.0, 0.025)
         
-        # 🔥 DEBUG: 그리퍼 액션 로깅 (매 100 스텝마다)
-        if self.step_count % 100 == 0:
-            print(f"[DEBUG-v3.7.7] step={self.step_count}, gripper_delta={gripper_delta:.4f}, gripper_pos={self.current_gripper_pos:.4f}, tracked_width={self.current_gripper_width:.4f} (BASE={BASE_GAP}), current_gripper=[{current_positions[6]:.4f}, {current_positions[7]:.4f}]")
-        
-        # 목표 positions 조합
-        target_positions = np.concatenate([
-            arm_targets,
-            [self.current_gripper_pos, self.current_gripper_pos]  # 양쪽 핑거 동일
-        ])
-        
-        # 🔥 v3.7.8 FIX: URDF 실제 joint limits 적용 (역 꺾임 현상 해결)
-        # joint_1: ±180°, joint_2~4,6: ±90°, joint_5: ±180°, gripper: 0~0.025
-        target_positions = np.clip(
-            target_positions,
-            [-3.14159, -1.57, -1.57, -1.57, -3.14159, -1.57, 0.0, 0.0],  # URDF lower limits
-            [3.14159, 1.57, 1.57, 1.57, 3.14159, 1.57, 0.025, 0.025]  # URDF upper limits
-        )
-        
-        # 🔥 v3.7.6 FIX: 순간이동 → PD 타깃 기반 제어로 변경
-        # 이전: self.robot.set_joint_positions() - 즉시 위치 강제 (비물리적)
-        # 변경: controller.set_joint_position_targets() - PD 제어 (마찰/접촉 정상화)
+        # PD 제어로 action 적용
         self.controller.apply_action(
             ArticulationAction(joint_positions=target_positions)
         )
         
-        # Physics 시뮬레이션 스텝 (학습 시 render=False 권장)
-        self.world.step(render=False)
-        
-        # ═══════════════════════════════════════════════════════════
-        # 🔥 v3.9.3 FIX: 그리퍼 폭 조건 완화 (6.2cm 문제 해결)
         # ═══════════════════════════════════════════════════════════
         # 현재 상태 가져오기
         if self.gripper is not None:  # Gripper 초기화 확인
@@ -873,8 +838,8 @@ class RoArmPickPlaceEnv:
         # 현재 상태 관측
         obs = self._get_observation()
         
-        # Reward 계산
-        reward = self._calculate_reward(obs)
+        # Reward 계산 (action 전달)
+        reward = self._calculate_reward(obs, action)
         
         # 종료 조건 확인
         done = self._check_done(obs)
@@ -894,9 +859,10 @@ class RoArmPickPlaceEnv:
         # 성공률 계산 (최근 에피소드 기준)
         success_rate = np.mean(self.episode_successes) if len(self.episode_successes) > 0 else 0.0
         
-        # 그리퍼 정보 추가
-        gripper_width = obs[23]
-        is_grasped = obs[24]
+        # V4.2: gripper 정보 (observation에서 is_grasped 제거됨)
+        gripper_pos = obs[21]
+        gripper_vel = obs[22]
+        gripper_torque = obs[23]
         
         info = {
             "step": self.current_step,
@@ -922,10 +888,11 @@ class RoArmPickPlaceEnv:
                 "grip": self.episode_attach_count,   # v3.9.0: grip → attach
                 "lift": self.episode_lift_count,
             },
-            # 그리퍼 정보
+            # 그리퍼 정보 (V4.2: position 기반)
             "gripper": {
-                "width": float(gripper_width),
-                "is_grasped": float(is_grasped),
+                "position": float(gripper_pos),
+                "velocity": float(gripper_vel),
+                "torque": float(gripper_torque),
                 "attach_frames": self.attach_hold_frames,  # v3.9.0: grip_frames → attach_hold_frames
             },
             # 종료 사유
@@ -939,68 +906,75 @@ class RoArmPickPlaceEnv:
             "success_rate": float(success_rate),
         }
         
-        return obs, reward, done, info
+        # Gymnasium API: (observation, reward, terminated, truncated, info)
+        truncated = False  # 환경이 시간 제한으로 종료되지 않음
+        return obs, reward, done, truncated, info
     
-    def _calculate_reward(self, obs: np.ndarray) -> float:
+    def _calculate_reward(self, obs: np.ndarray, action: np.ndarray) -> float:
         """
-        🎯 개선된 HYBRID REWARD: Shaped-Sparse + Dense
-        
-        개선 사항:
-        1. Dense Reward 추가: 매 스텝 거리 기반 피드백
-        2. Shaped-Sparse: 마일스톤 이벤트 보상 유지
-        3. 게이팅 강화: grasp_valid 체크
+        V4.1.0 Reward: ACTION 기반 그리퍼 보상
         
         보상 구조:
         A. Dense Reward (매 스텝):
-          - EE → Cube 접근: -distance * 3.0
-          - Cube → Target 접근: -distance * 2.0 (grasp_valid 시)
-          - 진전 보너스: +0.5 (거리 줄어들 때)
+          - EE to Cube 접근
+          - Cube to Target 접근
         
-        B. Shaped-Sparse (1회성):
-          - 근접 (+5): EE가 큐브 5cm 이내
-          - 그립 (+10): 유효 그립 3프레임
-          - 리프트 (+15): 큐브 5cm 이상
-          - 목표 근접 (+20): 큐브가 목표 8cm 이내
-          - Success (+100): 목표 5cm 이내
+        B. Milestone Rewards (v4.1.0):
+          - REACH (+7.0): 5cm 진입 + 지속 보상
+          - 그리퍼 닫기 (+0.5~2.5): ACTION 기반
+          - ATTACH (+50.0): 물리적 부착
+          - LIFT (+15.0): 큐브 들어올림
+          - SUCCESS (+50.0): 최종 성공
         
-        C. Penalty:
-          - Time penalty: -0.01
+        Args:
+            obs: 관측 벡터 (28차원)
+            action: 액션 벡터 (7차원)
         """
-        # 관찰에서 필요한 값 추출 (개선된 28 dim 관측)
-        # 🔥 DEBUG: observation 길이 확인
+        # 🤖 V4.2: 관찰에서 필요한 값 추출 (24 dim)
+        # Observation 구조:
+        # [0:6]   - joint_positions (6 DOF)
+        # [6:9]   - cube_relative_to_ee
+        # [9:12]  - target_relative_to_ee
+        # [12:15] - cube_to_target
+        # [15:18] - ee_pos
+        # [18:21] - cube_pos
+        # [21:24] - gripper_state (pos, vel, torque)
+        
+        # 디버그: observation 길이 확인
         if self.step_count % 100 == 1:
             print(f"[REWARD-DEBUG-PRE] step={self.step_count}, obs.shape={obs.shape}, len={len(obs)}")
         
-        cube_relative_to_ee = obs[8:11]    # EE 기준 상대 좌표
-        target_relative_to_ee = obs[11:14]  # EE 기준 상대 좌표
-        cube_to_target = obs[14:17]
-        ee_velocity = obs[17:20]           # 🔧 FIX: EE 속도 추출
-        cube_velocity = obs[20:23]
-        gripper_width = obs[23]
-        is_grasped = obs[24]
-        dist_to_cube = obs[25]
-        dist_cube_to_target = obs[26]
+        # Observation에서 값 추출
+        cube_relative_to_ee = obs[6:9]
+        target_relative_to_ee = obs[9:12]
+        cube_to_target = obs[12:15]
+        ee_pos = obs[15:18]
+        cube_pos = obs[18:21]
+        gripper_pos = obs[21]
+        gripper_vel = obs[22]
+        gripper_torque = obs[23]
         
-        # 🔥 DEBUG: reward 계산 시 gripper_width 검증
+        # 거리 계산
+        dist_to_cube = float(np.linalg.norm(cube_relative_to_ee))
+        dist_cube_to_target = float(np.linalg.norm(cube_to_target))
+        
+        # 디버그: gripper state 검증
         if self.step_count % 100 == 1:
-            print(f"[REWARD-DEBUG] step={self.step_count}, obs[23]={obs[23]:.4f}, gripper_width={gripper_width:.4f}")
-        
-        # 월드 좌표 재구성 (디버깅용)
-        ee_pos = self._get_ee_position()
-        cube_pos = ee_pos + cube_relative_to_ee
+            print(f"[REWARD-DEBUG] step={self.step_count}, gripper_pos={gripper_pos:.4f}, gripper_vel={gripper_vel:.4f}")
         
         # ═══════════════════════════════════════════════════════════
-        # 🔒 v3.9.0: 물리적 부착 확인 (Attach 기반 성공 정의)
+        # 물리적 부착 확인 (Attach 기반 성공 정의)
         # ═══════════════════════════════════════════════════════════
         is_attached = self.gripper.is_attached if self.gripper else False
         
-        # 🔥 v3.9.0: 보상용 게이트 (느슨 - 탐색 유도)
+        # 보상용 게이트 (느슨 - 탐색 유도)
+        # V4.2: gripper_width 대신 gripper_pos 사용
         grasp_valid_reward = (
-            dist_to_cube < 0.05 and            # 5cm (탐색 유도)
-            (0.030 < gripper_width < 0.050)    # 그리퍼 너비
+            dist_to_cube < 0.05 and            # 5cm 거리
+            (gripper_pos < 0.015)              # 그리퍼가 어느 정도 닫힘
         )
         
-        # 🔥 v3.9.0: 성공용 게이트 (엄격 - 평가 전용)
+        # 성공용 게이트 (엄격 - 평가 전용)
         # 물리적 부착 확인
         if is_attached and not self.gripper.detach_called_this_step:
             self.attach_hold_frames += 1
@@ -1050,15 +1024,9 @@ class RoArmPickPlaceEnv:
         except Exception as e:
             pass  # Fallback: skip orientation reward if error
         
-        # 🔧 FIX: 1. EE → Cube 방향성 보상 (큐브를 향해 움직이는 행동 강화)
-        # EE의 속도 벡터와 큐브 방향 벡터의 내적으로 방향성 평가
-        if np.linalg.norm(ee_velocity) > 0.01:  # EE가 움직이고 있을 때만
-            cube_direction = cube_relative_to_ee / (dist_to_cube + 1e-6)  # 정규화된 방향
-            ee_velocity_norm = ee_velocity / (np.linalg.norm(ee_velocity) + 1e-6)
-            
-            # 내적: 같은 방향이면 +1, 반대면 -1
-            direction_alignment = np.dot(ee_velocity_norm, cube_direction)
-            reward += 5.0 * direction_alignment  # 🔥 v3.7: 2.0 → 5.0 (2.5배 강화)
+        # 🔧 V4.2: EE velocity 제거 (observation에 포함 안됨)
+        # 이전: ee_velocity 기반 방향성 보상
+        # 현재: 제거 (심플한 reward 구조)
         
         # 2. EE → Cube 접근 보상 (개선량 기반) - 더 강화!
         if self.prev_ee_to_cube_dist is not None:
@@ -1092,45 +1060,31 @@ class RoArmPickPlaceEnv:
         reward += stage_bonus
         self.episode_reward_breakdown['stage_bonus'] += stage_bonus
         
-        # 🔥 v3.9.4: 4. 그리퍼 보상 (v3.9.2 기반 복원)
-        # v3.9.3 실패 원인: 근거리 보상 약화 (3.0 → 1.0)
-        # 해결: v3.9.2 일관성 복원 (입증된 방법)
+        # 🔥 V4.1: Dense 그리퍼 보상 제거 (Milestone로 이동)
+        # V4.0/V4.1 문제: 이 부분이 매 스텝 +3.0 지급 (100% 트리거)
+        # 해결: 완전 제거, Milestone Reward에서만 지급
         gripper_bonus = 0.0
-        if gripper_width > 0.01:  # 1cm 이상 열면
-            gripper_bonus = 3.0
-            reward += gripper_bonus
-            self.gripper_reward_count += 1
-            self.gripper_reward_total += gripper_bonus
+        # if gripper_width > 0.01:  # ← V3 코드 (제거됨)
+        #     gripper_bonus = 3.0
+        #     reward += gripper_bonus
+        #     self.gripper_reward_count += 1
+        #     self.gripper_reward_total += gripper_bonus
         self.episode_reward_breakdown['gripper_bonus'] += gripper_bonus
         
-        # 🔥 v3.9.4 NEW: 5. 거리-폭 연동 보상 (단계별 완화)
-        # v3.9.3 문제: 조건 너무 엄격 (5cm 진입 못함)
-        # 해결: 10cm부터 신호, 5cm에서 강화
+        # 🔥 V4.2: 거리-폭 연동 보상 제거 (gripper_width → gripper_pos)
+        # 이전: gripper_width 기반 synergy bonus
+        # 현재: gripper_pos 기반으로 간소화
         synergy_bonus = 0.0
-        if dist_to_cube < 0.10 and 0.03 < gripper_width < 0.06:  # 10cm 이내 + 이상적 폭
+        if dist_to_cube < 0.10 and gripper_pos < 0.020:  # 10cm 이내 + 그리퍼 닫는 중
             synergy_bonus += 10.0
-        if dist_to_cube < 0.05 and 0.03 < gripper_width < 0.06:  # 5cm 이내 + 이상적 폭
+        if dist_to_cube < 0.05 and gripper_pos < 0.015:  # 5cm 이내 + 거의 닫힘
             synergy_bonus += 40.0
         reward += synergy_bonus
         self.episode_reward_breakdown['synergy_bonus'] += synergy_bonus
         
-        # 🔥 v3.7.7 NEW: 6. Soft Width Reward (큐브 크기 고려한 부드러운 보상)
-        # 목적: 증분 제어 시 4cm 주변으로 자연스럽게 유도
-        # 이전 문제: 3cm vs 8-11cm 극단 왕복
-        # 해결책: 이차 패널티로 4cm 근처 선호 유도
-        width_penalty = 0.0
-        if dist_to_cube < 0.15:  # 15cm 이내에서만 (너무 멀면 무의미)
-            IDEAL_WIDTH = 0.04  # 4cm (큐브와 동일)
-            width_error = gripper_width - IDEAL_WIDTH
-            # 이차 패널티: (width - 4cm)^2
-            # 4cm일 때 0, 멀어질수록 패널티 증가
-            width_penalty = -5.0 * (width_error ** 2)
-            reward += width_penalty
-            # v3.9.6: width_penalty 제거됨 (간소화)
-            
-            # 디버깅: width 분포 추적 (100 스텝마다)
-            if self.step_count % 100 == 0 and dist_to_cube < 0.08:
-                print(f"  📏 Width: {gripper_width*100:.1f}cm (ideal: {IDEAL_WIDTH*100:.0f}cm), penalty: {width_penalty:.2f}")
+        # 🔥 V4.2: Width Penalty 제거 (gripper_width 없음)
+        # 이전: gripper_width 기반 이차 패널티
+        # 현재: 제거 (심플한 reward 구조)
         
         # 6. Cube → Target 접근 보상 (부착 시만, 개선량 기반)
         if is_attached and self.prev_cube_to_target_dist is not None:
@@ -1142,24 +1096,54 @@ class RoArmPickPlaceEnv:
         self.prev_cube_to_target_dist = dist_cube_to_target
         
         # ═══════════════════════════════════════════════════════════
-        # 🎁 B. v3.9.0: Milestone Rewards (엄격 - Attach 기반)
+        # 🎁 B. v4.1.0: Milestone Rewards (그리퍼 보상 수정)
         # ═══════════════════════════════════════════════════════════
         
-        # 1️⃣ REACH (+0.5): EE가 큐브에 처음 근접 (느슨 - 탐색 유도)
-        if not self.first_reach and dist_to_cube < 0.05:
-            reward += 0.5
-            self.first_reach = True
-            self.episode_reach_count += 1
-            self.episode_metrics['reach'] = True
-            print(f"  🎯 REACH (+0.5)")
+        # 1️⃣ REACH (지속적): EE가 큐브 근처 유지 (5cm 이내)
+        if dist_to_cube < 0.05:
+            reward += 2.0  # 매 스텝 보상 (유지 동기 부여)
+            if not self.first_reach:
+                reward += 5.0  # 최초 달성 보너스
+                self.first_reach = True
+                self.episode_reach_count += 1
+                self.episode_metrics['reach'] = True
+                print(f"  🎯 REACH (+7.0 = 2.0 지속 + 5.0 최초)")
+            
+            # 🤖 V4.2: REACH 후 그리퍼 닫기 유도 (ACTION 기반)
+            # action[5] < -0.3: 닫기 액션 (그리퍼 joint 음수 이동)
+            if action[5] < -0.3:
+                gripper_try_reward = 0.5  # 닫기 시도 보상
+                reward += gripper_try_reward
+                self.episode_reward_breakdown['gripper_bonus'] += gripper_try_reward
+                
+                # 실제로 그리퍼가 닫혔는지 확인 (position 기반)
+                current_joint_positions = self.robot.get_joint_positions()
+                gripper_pos = current_joint_positions[5]  # 현재 그리퍼 position
+                if gripper_pos < 0.01:  # 거의 닫힘 (0.025의 40%)
+                    gripper_close_reward = 2.0
+                    reward += gripper_close_reward
+                    self.episode_reward_breakdown['gripper_bonus'] += gripper_close_reward
+                    
+                    if not self._gripper_close_success:
+                        print(f"  ✋ GRIPPER CLOSE SUCCESS (+2.5) ← 닫기 액션 + position < 0.01!")
+                        self._gripper_close_success = True
+                        self.gripper_reward_count += 1
+                        self.gripper_reward_total += 2.5
+        else:
+            # REACH 달성 후 멀어지면 패널티 (V4: 강화)
+            if self.first_reach and dist_to_cube > 0.05:
+                reward -= 2.0  # 멀어짐 패널티 (V3: -1.0 → V4: -2.0)
         
         # 2️⃣ ATTACH (+50): 물리적 부착 달성 (엄격 - 진짜 그립만)
         if not self.first_attach and is_attached:
-            reward += 50.0
+            reward += 50.0  # 부착 성공 보상
             self.first_attach = True
             self.episode_attach_count += 1
             self.episode_metrics['attach'] = True
             print(f"  🤝 ATTACH (+50.0) ← 물리적 부착!")
+        
+        # 🆕 V4.1: ATTACH 준비 보상 제거 (과다 보상 방지)
+        # (ATTACH 성공 시 +50으로 충분)
         
         # 3️⃣ LIFT (+15): 리프트 달성 (부착 후 2cm 상승)
         if not self.first_lift and lift_achieved:
@@ -1178,12 +1162,14 @@ class RoArmPickPlaceEnv:
             self.episode_metrics['success'] = True
             print(f"  � SUCCESS (+50.0) ← 진짜 성공! (hold={self.lift_hold_frames})")
         
-        # 🔥 v3.9.0: 진단 로그 (50 스텝마다)
+        # 🤖 V4.2: 진단 로그 (50 스텝마다)
         if self.current_step % 50 == 0 and not is_attached:
-            print(f"  🔍 [v3.9.0] dist={dist_to_cube:.3f}, "
-                  f"width={gripper_width:.4f}, "
+            current_joint_positions = self.robot.get_joint_positions()
+            print(f"  🔍 [v4.2] dist={dist_to_cube:.3f}, "
+                  f"gripper_pos={current_joint_positions[5]:.4f}, "
                   f"attached={is_attached}, "
-                  f"lift_z={cube_pos[2]-self.initial_cube_z:.3f}")
+                  f"lift_z={cube_pos[2]-self.initial_cube_z:.3f}, "
+                  f"gripper_action={action[5]:.3f}")
         
         # ═══════════════════════════════════════════════════════════
         # 🎁 C. REWARD CLIPPING (1스텝 보상 제한)
@@ -1269,7 +1255,7 @@ class RoArmPickPlaceEnv:
         print(f"="*60)
         
         # 1. 거리 분포
-        if self.episode_distances:
+        if hasattr(self, 'episode_distances') and self.episode_distances:
             print(f"\n1️⃣ 거리 분석:")
             print(f"   최소 거리: {self.episode_min_distance*100:.1f}cm")
             print(f"   평균 거리: {np.mean(self.episode_distances)*100:.1f}cm")
@@ -1288,24 +1274,26 @@ class RoArmPickPlaceEnv:
             print(f"     > 20cm:  {hist[5]:4d}회 ({hist[5]/len(self.episode_distances)*100:5.1f}%)")
         
         # 2. 단계별 보상 트리거
-        print(f"\n2️⃣ 단계별 보상 트리거:")
-        print(f"   < 7cm:  {self.stage_7cm_triggered}회")
-        if self.stage_7cm_steps:
-            print(f"           첫 트리거: Step {self.stage_7cm_steps[0]}")
-        print(f"   < 5cm:  {self.stage_5cm_triggered}회")
-        if self.stage_5cm_steps:
-            print(f"           첫 트리거: Step {self.stage_5cm_steps[0]}")
-        print(f"   < 3cm:  {self.stage_3cm_triggered}회")
-        if self.stage_3cm_steps:
-            print(f"           첫 트리거: Step {self.stage_3cm_steps[0]}")
+        if hasattr(self, 'stage_7cm_triggered'):
+            print(f"\n2️⃣ 단계별 보상 트리거:")
+            print(f"   < 7cm:  {self.stage_7cm_triggered}회")
+            if hasattr(self, 'stage_7cm_steps') and self.stage_7cm_steps:
+                print(f"           첫 트리거: Step {self.stage_7cm_steps[0]}")
+            print(f"   < 5cm:  {self.stage_5cm_triggered}회")
+            if hasattr(self, 'stage_5cm_steps') and self.stage_5cm_steps:
+                print(f"           첫 트리거: Step {self.stage_5cm_steps[0]}")
+            print(f"   < 3cm:  {self.stage_3cm_triggered}회")
+            if hasattr(self, 'stage_3cm_steps') and self.stage_3cm_steps:
+                print(f"           첫 트리거: Step {self.stage_3cm_steps[0]}")
         
         # 3. 그리퍼 보상 통계
-        print(f"\n3️⃣ 그리퍼 보상 통계:")
-        print(f"   트리거 횟수: {self.gripper_reward_count}회 ({self.gripper_reward_count/self.current_step*100:.1f}%)")
-        if self.gripper_reward_count > 0:
-            avg_gripper = self.gripper_reward_total / self.gripper_reward_count
-            print(f"   평균 보상: {avg_gripper:.2f}")
-            print(f"   총 보상: {self.gripper_reward_total:.1f}")
+        if hasattr(self, 'gripper_reward_count'):
+            print(f"\n3️⃣ 그리퍼 보상 통계:")
+            print(f"   트리거 횟수: {self.gripper_reward_count}회 ({self.gripper_reward_count/self.step_count*100:.1f}%)")
+            if self.gripper_reward_count > 0:
+                avg_gripper = self.gripper_reward_total / self.gripper_reward_count
+                print(f"   평균 보상: {avg_gripper:.2f}")
+                print(f"   총 보상: {self.gripper_reward_total:.1f}")
         
         # 4. 액션 분포
         if hasattr(self, 'action_stats') and self.action_stats['gripper_actions']:
