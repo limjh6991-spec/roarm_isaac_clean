@@ -151,6 +151,22 @@ class RoArmPickPlaceEnv(gym.Env):
     
     🤖 V4.2: STL 메시 URDF + 6 DOF (그리퍼는 revolute joint로 통합)
     
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    📊 RoArm-M3 Joint Limits (URDF Spec)
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    Joint 0 (Base):          -1.5708 ~ +1.5708 rad (±90°,  회전)
+    Joint 1 (Link1/Shoulder): -1.5708 ~ +1.5708 rad (±90°,  수직)
+    Joint 2 (Link2/Elbow):    -1.0    ~ +2.95   rad (-57° ~ 169°)
+    Joint 3 (Wrist1):        -1.5708 ~ +1.5708 rad (±90°)
+    Joint 4 (Wrist2):        -3.1416 ~ +3.1416 rad (±180°, 회전)
+    Joint 5 (Gripper):        0.0    ~ +1.5    rad (0° ~ 86°, 열림→닫힘)
+    
+    🏠 'ㄱ'자 Home Position: [0.0, 0.0, -1.0, 0.0, 0.0, 0.0125]
+       - Joint 1 = 0.0 (수직)
+       - Joint 2 = -1.0 (URDF limit 준수, 'ㄱ'자)
+       - Gripper = 0.0125 (약간 열림)
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    
     Task: 큐브를 집어서 타겟 위치로 옮기기
     
     Observation Space (24 dim):
@@ -203,11 +219,6 @@ class RoArmPickPlaceEnv(gym.Env):
         # ═══════════════════════════════════════════════════════════
         # 📊 Observation/Action Space (개선: EE 기준 상대 좌표)
         # ═══════════════════════════════════════════════════════════
-        # Observation: 28 dim (EE 기준 상대 좌표!)
-        #   - Joint positions (8)
-        #   - Cube pos relative to EE (3) ← 핵심!
-        #   - Target pos relative to EE (3) ← 핵심!
-        #   - Cube to Target vector (3)
         # 🤖 V4.2: 6 DOF (STL 메시 URDF)
         # Observation: 24 dim
         #   - Joint positions (6): joint_1 ~ joint_6 (마지막이 gripper)
@@ -218,8 +229,16 @@ class RoArmPickPlaceEnv(gym.Env):
         #   - Cube → Target vector (3)
         #   - Gripper state (3): position, velocity, torque
         self.observation_space_dim = 24
-        # Action: 6 DOF 
-        # 구조: [5 DoF arm joints] + [1 gripper joint]
+        
+        # Action: 6 DOF (Joint Limits 준수)
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        # Joint 0 (Base):   [-1.5708, +1.5708] (±90°)
+        # Joint 1 (Link1):  [-1.5708, +1.5708] (±90°)
+        # Joint 2 (Link2):  [-1.0,    +2.95]   (-57° ~ 169°)
+        # Joint 3 (Wrist1): [-1.5708, +1.5708] (±90°)
+        # Joint 4 (Wrist2): [-3.1416, +3.1416] (±180°)
+        # Joint 5 (Gripper):[0.0,     +1.5]    (0° ~ 86°)
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
         self.action_dim = 6
         self.action_space_dim = 7
         
@@ -786,17 +805,44 @@ class RoArmPickPlaceEnv(gym.Env):
         # 현재 joint positions 가져오기 (6 DOF)
         current_positions = self.robot.get_joint_positions()[:6]
         
-        # Action scaling: 팔은 작게, 그리퍼는 크게
-        action_scale = np.array([0.05, 0.05, 0.05, 0.05, 0.05, 0.1])
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        # Action scaling: Joint별로 최대 범위를 고려한 스케일링
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        # Joint 0 (Base):   range=3.14 → scale=0.1 (큰 회전)
+        # Joint 1 (Link1):  range=3.14 → scale=0.05
+        # Joint 2 (Link2):  range=3.95 → scale=0.08 (가장 큰 범위)
+        # Joint 3 (Wrist1): range=3.14 → scale=0.05
+        # Joint 4 (Wrist2): range=6.28 → scale=0.15 (최대 회전)
+        # Joint 5 (Gripper): range=1.5  → scale=0.3 (그리퍼는 크게)
+        action_scale = np.array([0.1, 0.05, 0.08, 0.05, 0.15, 0.3])
         target_positions = current_positions + action * action_scale
         
-        # Joint limits 적용 (그리퍼만 명시적으로 제한)
-        target_positions[5] = np.clip(target_positions[5], 0.0, 0.025)
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        # Joint limits 적용 (URDF 스펙 준수)
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        target_positions[0] = np.clip(target_positions[0], -1.5708, 1.5708)  # Base
+        target_positions[1] = np.clip(target_positions[1], -1.5708, 1.5708)  # Link1
+        target_positions[2] = np.clip(target_positions[2], -1.0, 2.95)      # Link2
+        target_positions[3] = np.clip(target_positions[3], -1.5708, 1.5708)  # Wrist1
+        target_positions[4] = np.clip(target_positions[4], -3.1416, 3.1416)  # Wrist2
+        target_positions[5] = np.clip(target_positions[5], 0.0, 1.5)         # Gripper
         
         # PD 제어로 action 적용
         self.controller.apply_action(
             ArticulationAction(joint_positions=target_positions)
         )
+        
+        # 🔥 CRITICAL FIX: Simulation step 진행 (action 적용 후 물리 업데이트)
+        # - 이 단계가 없으면 로봇이 절대 움직이지 않음!
+        # - apply_action()은 타깃만 설정, step()으로 실제 물리 진행
+        # - GUI 모드에서는 렌더링도 함께 수행 (화면 업데이트)
+        self.world.step(render=False)
+        
+        # GUI 모드일 때 렌더링 업데이트 (뷰포트 화면 갱신)
+        # - has_gui(): GUI 창이 활성화된 경우
+        # - render(): 뷰포트 및 UI 요소 업데이트
+        if hasattr(self.world, 'has_gui') and self.world.has_gui():
+            self.world.render()
         
         # ═══════════════════════════════════════════════════════════
         # 현재 상태 가져오기
