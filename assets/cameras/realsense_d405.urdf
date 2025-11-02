@@ -1,0 +1,70 @@
+<?xml version="1.0"?>
+<robot name="realsense_d405">
+  <!-- Intel RealSense D405 Camera URDF
+       Specs: 42mm x 42mm x 23mm, 60g
+       FOV: 87° x 58°
+       Range: 7cm - 50cm
+       Ideal for close-range pick and place
+  -->
+  
+  <!-- Base Link (Camera Housing) -->
+  <link name="camera_link">
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <mass value="0.060"/>  <!-- 60g -->
+      <inertia ixx="0.00001" ixy="0" ixz="0" 
+               iyy="0.00001" iyz="0" 
+               izz="0.00001"/>
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.042 0.042 0.023"/>  <!-- 42x42x23mm -->
+      </geometry>
+      <material name="camera_black">
+        <color rgba="0.15 0.15 0.15 1.0"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.042 0.042 0.023"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <!-- Depth Frame (Center of depth sensor) -->
+  <link name="camera_depth_frame"/>
+  <joint name="camera_depth_joint" type="fixed">
+    <parent link="camera_link"/>
+    <child link="camera_depth_frame"/>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+  </joint>
+
+  <!-- Depth Optical Frame (ROS → Optical coordinate transform) -->
+  <link name="camera_depth_optical_frame"/>
+  <joint name="camera_depth_optical_joint" type="fixed">
+    <parent link="camera_depth_frame"/>
+    <child link="camera_depth_optical_frame"/>
+    <!-- ROS (X:forward, Y:left, Z:up) → Optical (X:right, Y:down, Z:forward) -->
+    <origin xyz="0 0 0" rpy="-1.5707963267949 0 -1.5707963267949"/>
+  </joint>
+
+  <!-- Color Frame (RGB sensor position, nearly same as depth for D405) -->
+  <link name="camera_color_frame"/>
+  <joint name="camera_color_joint" type="fixed">
+    <parent link="camera_depth_frame"/>
+    <child link="camera_color_frame"/>
+    <!-- D405: RGB and Depth sensors are very close (< 1mm difference) -->
+    <origin xyz="0.0 0.0 0.0" rpy="0 0 0"/>
+  </joint>
+
+  <!-- Color Optical Frame -->
+  <link name="camera_color_optical_frame"/>
+  <joint name="camera_color_optical_joint" type="fixed">
+    <parent link="camera_color_frame"/>
+    <child link="camera_color_optical_frame"/>
+    <origin xyz="0 0 0" rpy="-1.5707963267949 0 -1.5707963267949"/>
+  </joint>
+
+</robot>
