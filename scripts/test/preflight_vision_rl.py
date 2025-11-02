@@ -21,6 +21,10 @@ print("🔍 Vision RL Pre-flight Check")
 print("=" * 80)
 print()
 
+# Enable cameras before importing
+import sys
+sys.argv.extend(["--enable_cameras"])
+
 # 1. Environment import
 print("1️⃣ Importing environment...")
 try:

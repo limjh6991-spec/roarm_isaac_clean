@@ -28,6 +28,9 @@ parser.add_argument("--num_envs", type=int, default=1)
 AppLauncher.add_app_launcher_args(parser)
 args_cli = parser.parse_args()
 
+# Enable cameras flag for rendering
+args_cli.enable_cameras = True
+
 app_launcher = AppLauncher(args_cli)
 simulation_app = app_launcher.app
 
@@ -98,6 +101,33 @@ class SimpleVisionEnv(gym.Env):
         sim_utils.GroundPlaneCfg().func("/World/ground", sim_utils.GroundPlaneCfg())
         sim_utils.DomeLightCfg(intensity=3000.0).func("/World/light", sim_utils.DomeLightCfg(intensity=3000.0))
         
+        # Create table (visual only)
+        table_cfg = sim_utils.CuboidCfg(
+            size=(0.8, 0.8, 0.4),
+            visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.5, 0.5, 0.5)),
+        )
+        table_cfg.func("/World/Table", table_cfg, translation=(0.0, 0.0, 0.2))
+        
+        # Create cube (pick object)
+        cube_cfg = sim_utils.CuboidCfg(
+            size=(0.05, 0.05, 0.05),
+            rigid_props=sim_utils.RigidBodyPropertiesCfg(
+                kinematic_enabled=False,
+                disable_gravity=False,
+            ),
+            mass_props=sim_utils.MassPropertiesCfg(mass=0.05),
+            collision_props=sim_utils.CollisionPropertiesCfg(),
+            visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(1.0, 0.0, 0.0)),
+        )
+        cube_cfg.func("/World/Cube", cube_cfg, translation=(0.3, 0.0, 0.45))
+        
+        # Create target (goal marker - visual only)
+        target_cfg = sim_utils.CuboidCfg(
+            size=(0.06, 0.06, 0.001),
+            visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.0, 1.0, 0.0)),
+        )
+        target_cfg.func("/World/Target", target_cfg, translation=(-0.3, 0.0, 0.45))
+        
         # Robot
         robot_cfg = ArticulationCfg(
             prim_path="/World/RoArm",
@@ -142,6 +172,16 @@ class SimpleVisionEnv(gym.Env):
         self.home_joint_pos = torch.zeros(self.robot.num_joints, device=self.sim.device)
         self.home_joint_pos[1] = 0.5  # joint2
         self.home_joint_pos[2] = -0.5  # joint3
+        
+        # Cube and target positions
+        self.cube_initial_pos = torch.tensor([0.3, 0.0, 0.45], device=self.sim.device)
+        self.target_pos = torch.tensor([-0.3, 0.0, 0.45], device=self.sim.device)
+        
+        # Get prim paths for cube
+        from pxr import UsdGeom
+        stage = self.sim.stage
+        self.cube_prim = stage.GetPrimAtPath("/World/Cube")
+        self.cube_xform = UsdGeom.Xformable(self.cube_prim)
     
     def _get_observation(self) -> np.ndarray:
         """Get RGB-D observation (4, 84, 84)"""
@@ -165,18 +205,57 @@ class SimpleVisionEnv(gym.Env):
         
         return rgbd
     
+    def _get_cube_position(self) -> torch.Tensor:
+        """Get current cube position"""
+        # Get cube position from USD
+        translate_op = self.cube_xform.GetOrderedXformOps()[0]
+        pos = translate_op.Get()
+        return torch.tensor([pos[0], pos[1], pos[2]], device=self.sim.device)
+    
+    def _get_gripper_position(self) -> torch.Tensor:
+        """Get gripper position (end-effector)"""
+        # Assume last link is gripper
+        gripper_link_idx = self.robot.num_bodies - 1
+        gripper_pos = self.robot.data.body_pos_w[0, gripper_link_idx, :]
+        return gripper_pos
+    
     def _compute_reward(self) -> float:
-        """Simple reward: penalize large movements"""
-        # Get joint velocities
-        joint_vel = self.robot.data.joint_vel[0].cpu().numpy()
+        """Pick and Place reward"""
+        # Get positions
+        gripper_pos = self._get_gripper_position()
+        cube_pos = self._get_cube_position()
         
-        # Penalty for large movements
-        motion_penalty = -0.01 * np.sum(np.abs(joint_vel))
+        # Distance from gripper to cube
+        dist_to_cube = torch.norm(gripper_pos - cube_pos).item()
         
-        # Small survival bonus
-        alive_bonus = 0.1
+        # Distance from cube to target
+        dist_cube_to_target = torch.norm(cube_pos - self.target_pos).item()
         
-        reward = alive_bonus + motion_penalty
+        # Reward components
+        reward = 0.0
+        
+        # 1. Reach reward: encourage approaching cube
+        reach_reward = -dist_to_cube * 2.0  # Scale: closer = higher reward
+        reward += reach_reward
+        
+        # 2. Grasp bonus: if gripper is very close to cube
+        if dist_to_cube < 0.05:  # 5cm
+            reward += 5.0
+        
+        # 3. Lift bonus: if cube is lifted
+        if cube_pos[2] > self.cube_initial_pos[2] + 0.05:  # 5cm above initial
+            reward += 10.0
+        
+        # 4. Place reward: if cube is close to target
+        if dist_cube_to_target < 0.1:  # 10cm
+            reward += 20.0
+        
+        # 5. Success bonus: if cube is at target
+        if dist_cube_to_target < 0.05:  # 5cm
+            reward += 100.0
+        
+        # 6. Small time penalty to encourage efficiency
+        reward -= 0.01
         
         return float(reward)
     
@@ -193,6 +272,20 @@ class SimpleVisionEnv(gym.Env):
             torch.zeros_like(self.home_joint_pos).unsqueeze(0)
         )
         
+        # Reset cube position (with randomization)
+        if seed is not None:
+            np.random.seed(seed)
+        
+        # Random cube position (within ±10cm from initial)
+        cube_offset = (np.random.rand(2) - 0.5) * 0.2  # ±10cm in x, y
+        new_cube_pos = self.cube_initial_pos.clone()
+        new_cube_pos[0] += cube_offset[0]
+        new_cube_pos[1] += cube_offset[1]
+        
+        # Set cube position in USD
+        translate_op = self.cube_xform.GetOrderedXformOps()[0]
+        translate_op.Set((float(new_cube_pos[0]), float(new_cube_pos[1]), float(new_cube_pos[2])))
+        
         # Step simulation to apply reset
         for _ in range(10):
             self.sim.step()
@@ -200,8 +293,16 @@ class SimpleVisionEnv(gym.Env):
         # Get observation
         obs = self._get_observation()
         
+        # Get initial distances for info
+        gripper_pos = self._get_gripper_position()
+        cube_pos = self._get_cube_position()
+        dist_to_cube = torch.norm(gripper_pos - cube_pos).item()
+        dist_cube_to_target = torch.norm(cube_pos - self.target_pos).item()
+        
         info = {
             "episode_step": self.episode_step,
+            "dist_to_cube": dist_to_cube,
+            "dist_cube_to_target": dist_cube_to_target,
         }
         
         return obs, info
@@ -240,12 +341,24 @@ class SimpleVisionEnv(gym.Env):
         # Compute reward
         reward = self._compute_reward()
         
+        # Get current state for info
+        gripper_pos = self._get_gripper_position()
+        cube_pos = self._get_cube_position()
+        dist_to_cube = torch.norm(gripper_pos - cube_pos).item()
+        dist_cube_to_target = torch.norm(cube_pos - self.target_pos).item()
+        
         # Check termination
-        terminated = False  # Simple env: no failure condition
+        # Success: cube reached target
+        terminated = dist_cube_to_target < 0.05  # 5cm
+        
+        # Truncation: max steps reached
         truncated = self.episode_step >= self.max_episode_steps
         
         info = {
             "episode_step": self.episode_step,
+            "dist_to_cube": dist_to_cube,
+            "dist_cube_to_target": dist_cube_to_target,
+            "is_success": terminated,
         }
         
         return obs, reward, terminated, truncated, info
