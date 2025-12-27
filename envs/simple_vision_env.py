@@ -21,29 +21,24 @@ from typing import Tuple, Dict, Any
 import gymnasium as gym
 from gymnasium import spaces
 
-from isaaclab.app import AppLauncher
-
-parser = argparse.ArgumentParser()
-parser.add_argument("--num_envs", type=int, default=1)
-AppLauncher.add_app_launcher_args(parser)
-args_cli = parser.parse_args()
-
-# Enable cameras flag for rendering
-args_cli.enable_cameras = True
-
-app_launcher = AppLauncher(args_cli)
-simulation_app = app_launcher.app
+# ✅ FIX: AppLauncher 초기화는 이 모듈을 import하는 메인 스크립트에서 수행
+# (train_vision_sac.py에서 SimulationApp을 먼저 초기화함)
 
 """Rest everything follows."""
 
 import torch
 import cv2
 
-import isaaclab.sim as sim_utils
-from isaaclab.assets import Articulation, ArticulationCfg
-from isaaclab.actuators import ImplicitActuatorCfg
-from isaaclab.sim import SimulationCfg, SimulationContext
-from isaaclab.sensors import Camera, CameraCfg
+# Isaac Sim 5.1 API
+from isaacsim import SimulationApp
+
+# Isaac Core API (5.1 namespace)
+from isaacsim.core.api import World
+from isaacsim.core.api.articulations import Articulation
+from isaacsim.sensors.camera import Camera as IsaacCamera
+
+# Note: DynamicCuboid, VisualCuboid, rotations moved or replaced in 5.1
+# Using USD prims directly instead
 
 
 class SimpleVisionEnv(gym.Env):
@@ -108,18 +103,25 @@ class SimpleVisionEnv(gym.Env):
         )
         table_cfg.func("/World/Table", table_cfg, translation=(0.0, 0.0, 0.2))
         
-        # Create cube (pick object)
-        cube_cfg = sim_utils.CuboidCfg(
-            size=(0.05, 0.05, 0.05),
-            rigid_props=sim_utils.RigidBodyPropertiesCfg(
-                kinematic_enabled=False,
-                disable_gravity=False,
+        # Create cube (pick object) as RigidObject
+        cube_cfg = RigidObjectCfg(
+            prim_path="/World/Cube",
+            spawn=sim_utils.CuboidCfg(
+                size=(0.05, 0.05, 0.05),
+                rigid_props=sim_utils.RigidBodyPropertiesCfg(
+                    kinematic_enabled=False,
+                    disable_gravity=False,
+                ),
+                mass_props=sim_utils.MassPropertiesCfg(mass=0.05),
+                collision_props=sim_utils.CollisionPropertiesCfg(),
+                visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(1.0, 0.0, 0.0)),
             ),
-            mass_props=sim_utils.MassPropertiesCfg(mass=0.05),
-            collision_props=sim_utils.CollisionPropertiesCfg(),
-            visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(1.0, 0.0, 0.0)),
+            init_state=RigidObjectCfg.InitialStateCfg(
+                pos=(0.3, 0.0, 0.45),
+                rot=(1.0, 0.0, 0.0, 0.0),
+            ),
         )
-        cube_cfg.func("/World/Cube", cube_cfg, translation=(0.3, 0.0, 0.45))
+        self.cube = RigidObject(cube_cfg)
         
         # Create target (goal marker - visual only)
         target_cfg = sim_utils.CuboidCfg(
@@ -176,12 +178,6 @@ class SimpleVisionEnv(gym.Env):
         # Cube and target positions
         self.cube_initial_pos = torch.tensor([0.3, 0.0, 0.45], device=self.sim.device)
         self.target_pos = torch.tensor([-0.3, 0.0, 0.45], device=self.sim.device)
-        
-        # Get prim paths for cube
-        from pxr import UsdGeom
-        stage = self.sim.stage
-        self.cube_prim = stage.GetPrimAtPath("/World/Cube")
-        self.cube_xform = UsdGeom.Xformable(self.cube_prim)
     
     def _get_observation(self) -> np.ndarray:
         """Get RGB-D observation (4, 84, 84)"""
@@ -207,10 +203,8 @@ class SimpleVisionEnv(gym.Env):
     
     def _get_cube_position(self) -> torch.Tensor:
         """Get current cube position"""
-        # Get cube position from USD
-        translate_op = self.cube_xform.GetOrderedXformOps()[0]
-        pos = translate_op.Get()
-        return torch.tensor([pos[0], pos[1], pos[2]], device=self.sim.device)
+        # Get cube position from RigidObject
+        return self.cube.data.root_pos_w[0]
     
     def _get_gripper_position(self) -> torch.Tensor:
         """Get gripper position (end-effector)"""
@@ -282,9 +276,11 @@ class SimpleVisionEnv(gym.Env):
         new_cube_pos[0] += cube_offset[0]
         new_cube_pos[1] += cube_offset[1]
         
-        # Set cube position in USD
-        translate_op = self.cube_xform.GetOrderedXformOps()[0]
-        translate_op.Set((float(new_cube_pos[0]), float(new_cube_pos[1]), float(new_cube_pos[2])))
+        # Set cube position using RigidObject
+        self.cube.write_root_pose_to_sim(
+            new_cube_pos.unsqueeze(0),
+            torch.tensor([1.0, 0.0, 0.0, 0.0], device=self.sim.device).unsqueeze(0)
+        )
         
         # Step simulation to apply reset
         for _ in range(10):
@@ -371,12 +367,12 @@ class SimpleVisionEnv(gym.Env):
         """Close environment"""
         if hasattr(self, 'sim'):
             self.sim.stop()
-        simulation_app.close()
+        # SimulationApp은 메인 스크립트에서 관리
 
 
 # Test function
 def test_env():
-    """Test environment"""
+    """Test environment (requires SimulationApp initialized)"""
     print("=" * 80)
     print("🧪 Testing SimpleVisionEnv")
     print("=" * 80)
@@ -412,4 +408,21 @@ def test_env():
 
 
 if __name__ == "__main__":
-    test_env()
+    # AppLauncher 초기화 (standalone 실행 시)
+    # TODO_5.1: Isaac Lab not available in 5.1, consider using native API
+# from omni.isaac.lab.app import AppLauncher
+    import argparse
+    
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--num_envs", type=int, default=1)
+    AppLauncher.add_app_launcher_args(parser)
+    args_cli = parser.parse_args()
+    args_cli.enable_cameras = True
+    
+    app_launcher = AppLauncher(args_cli)
+    simulation_app = app_launcher.app
+    
+    try:
+        test_env()
+    finally:
+        simulation_app.close()

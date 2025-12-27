@@ -12,12 +12,18 @@ from typing import Optional, Tuple
 import gymnasium as gym
 from gymnasium import spaces
 
-from omni.isaac.lab.envs import ManagerBasedRLEnv, ManagerBasedRLEnvCfg
-from omni.isaac.lab.managers import SceneEntityCfg
-from omni.isaac.lab.assets import Articulation
-from omni.isaac.lab.sensors import Camera
-from omni.isaac.lab.sim import SimulationContext
-from omni.isaac.lab.utils.math import quat_to_euler_xyz
+# TODO_5.1: Isaac Lab not available in 5.1, consider using native API
+# from omni.isaac.lab.envs import ManagerBasedRLEnv, ManagerBasedRLEnvCfg
+# TODO_5.1: Isaac Lab not available in 5.1, consider using native API
+# from omni.isaac.lab.managers import SceneEntityCfg
+# TODO_5.1: Isaac Lab not available in 5.1, consider using native API
+# from omni.isaac.lab.assets import Articulation
+# TODO_5.1: Isaac Lab not available in 5.1, consider using native API
+# from omni.isaac.lab.sensors import Camera
+# TODO_5.1: Isaac Lab not available in 5.1, consider using native API
+# from omni.isaac.lab.sim import SimulationContext
+# TODO_5.1: Isaac Lab not available in 5.1, consider using native API
+# from omni.isaac.lab.utils.math import quat_to_euler_xyz
 
 import cv2
 

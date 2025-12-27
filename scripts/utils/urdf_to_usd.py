@@ -11,14 +11,14 @@ from pathlib import Path
 ISAAC_SIM_PATH = "/home/roarm_m3/.local/share/ov/pkg/isaac-sim-4.2.0"
 sys.path.insert(0, f"{ISAAC_SIM_PATH}/exts/omni.isaac.kit/omni/isaac/kit")
 
-from omni.isaac.kit import SimulationApp
+from isaacsim import SimulationApp
 
 # Launch Isaac Sim (headless mode for conversion)
 simulation_app = SimulationApp({"headless": False, "width": 1280, "height": 720})
 
 import omni
-from omni.isaac.core import World
-from omni.isaac.urdf import _urdf
+from isaacsim.core.api import World
+from isaacsim.asset.importer.urdf import _urdf  # ✅ Isaac Sim 5.1 API
 import carb
 
 # Paths

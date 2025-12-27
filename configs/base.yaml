@@ -1,0 +1,104 @@
+# RoArm-M3 RL Environment Base Configuration
+# Isaac Sim 5.1 compatible
+
+# ═══════════════════════════════════════════════════════════════
+# Environment Settings
+# ═══════════════════════════════════════════════════════════════
+env:
+  num_envs: 1
+  env_spacing: 2.5
+  episode_length_s: 10.0
+  fps: 60
+
+# ═══════════════════════════════════════════════════════════════
+# Robot Settings
+# ═══════════════════════════════════════════════════════════════
+robot:
+  urdf_path: "${PROJECT_ROOT}/assets/roarm_m3/urdf/roarm_m3.generated.urdf"
+  position: [0.0, 0.0, 0.0]
+  
+  # 6 DOF Joint Limits (URDF Spec)
+  # Joint 0 (Base):      [-1.5708, +1.5708] rad (±90°)
+  # Joint 1 (Shoulder):  [-1.5708, +1.5708] rad (±90°)
+  # Joint 2 (Elbow):     [-1.0,    +2.95]   rad (-57° ~ 169°)
+  # Joint 3 (Wrist1):    [-1.5708, +1.5708] rad (±90°)
+  # Joint 4 (Wrist2):    [-3.1416, +3.1416] rad (±180°)
+  # Joint 5 (Gripper):   [0.0,     +1.5]    rad (0° ~ 86°)
+  home_position: [0.0, 0.0, -1.0, 0.0, 0.0, 0.0125]
+  
+  # Joint Drive Parameters
+  drive:
+    arm:
+      stiffness: 5000.0
+      damping: 500.0
+      max_force: 500.0
+    gripper:
+      stiffness: 8000.0
+      damping: 800.0
+      max_force: 50.0
+
+# ═══════════════════════════════════════════════════════════════
+# Object Settings
+# ═══════════════════════════════════════════════════════════════
+object:
+  cube:
+    position: [0.3, 0.0, 0.05]
+    size: [0.04, 0.04, 0.04]
+    color: [0.8, 0.2, 0.2]  # Red
+    mass: 0.1
+  target:
+    position: [0.0, 0.3, 0.2]
+    size: [0.04, 0.04, 0.04]
+    color: [0.2, 0.8, 0.2]  # Green
+
+# ═══════════════════════════════════════════════════════════════
+# Reward Settings
+# ═══════════════════════════════════════════════════════════════
+reward:
+  success_reward: 100.0
+  success_threshold: 0.02      # 2cm precision
+  success_hold_frames: 10
+  time_penalty: 0.01
+  
+  # Stage bonuses
+  reach_bonus: 5.0
+  attach_bonus: 50.0
+  
+  # Distance thresholds (cm)
+  stage_thresholds:
+    - 0.07  # 7cm
+    - 0.05  # 5cm
+    - 0.03  # 3cm
+
+# ═══════════════════════════════════════════════════════════════
+# Curriculum Learning
+# ═══════════════════════════════════════════════════════════════
+curriculum:
+  enabled: true
+  initial_phase: 0
+  
+  # Phase 0: Easy Mode (15-25cm cube, 25-35cm target)
+  easy:
+    cube_distance: [0.15, 0.25]
+    target_distance: [0.25, 0.35]
+  
+  # Phase 1: Normal Mode (35-50cm)
+  normal:
+    cube_distance: [0.35, 0.50]
+    target_distance: [0.35, 0.50]
+  
+  # Auto-promotion conditions
+  promotion:
+    success_rate_window: 100
+    success_rate_threshold: 0.30
+    reach_milestone_threshold: 5
+
+# ═══════════════════════════════════════════════════════════════
+# Physics Settings
+# ═══════════════════════════════════════════════════════════════
+physics:
+  friction:
+    static: 1.2
+    dynamic: 1.0
+    restitution: 0.1
+  stabilization_steps: 60

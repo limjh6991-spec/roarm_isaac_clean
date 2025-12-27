@@ -61,24 +61,114 @@ except ImportError as e:
 print("=" * 80)
 print()
 
-# Isaac Sim imports
-import omni.isaac.core.utils.prims as prim_utils
-from omni.isaac.core import World
-from omni.isaac.core.objects import DynamicCuboid
-from omni.isaac.core.articulations import Articulation
-from omni.isaac.core.utils.stage import add_reference_to_stage
-from omni.isaac.core.utils.types import ArticulationAction  # 🔥 v3.7.6: 타깃 기반 제어용
+# Isaac Sim 5.1 imports
+import isaacsim.core.utils.prims as prim_utils
+from isaacsim.core.api import World
+from isaacsim.core.prims import SingleArticulation  # ✅ Isaac Sim 5.1 API
+from isaacsim.core.utils.stage import add_reference_to_stage
 
-# Isaac Lab imports (Isaac Sim 5.0)
-try:
-    from omni.isaac.lab.envs import DirectRLEnv, DirectRLEnvCfg
-    from omni.isaac.lab.utils import configclass
-except ImportError:
-    # Fallback for older API
-    print("⚠️ Isaac Lab API not found. Using basic implementation.")
-    DirectRLEnv = object
-    DirectRLEnvCfg = object
-    configclass = lambda x: x
+# Isaac Lab removed in 5.1 - using dummy classes
+DirectRLEnv = object
+DirectRLEnvCfg = object
+configclass = lambda x: x
+
+
+def create_dynamic_cuboid(stage, prim_path: str, position, size: float, color, name: str = None):
+    """
+    Isaac Sim 5.1 replacement for DynamicCuboid.
+    Creates a rigid body cube using USD prims.
+    """
+    from pxr import UsdGeom, UsdPhysics, Gf, PhysxSchema
+    import numpy as np
+    
+    # Create Xform for the cube
+    cube_xform = UsdGeom.Xform.Define(stage, prim_path)
+    cube_xform.AddTranslateOp().Set(Gf.Vec3d(*position))
+    
+    # Create the cube geometry
+    cube_path = f"{prim_path}/Cube"
+    cube_geom = UsdGeom.Cube.Define(stage, cube_path)
+    cube_geom.GetSizeAttr().Set(size)
+    
+    # Set color
+    if color is not None:
+        color_arr = np.array(color)
+        cube_geom.GetDisplayColorAttr().Set([Gf.Vec3f(*color_arr)])
+    
+    # Get the root prim for physics
+    cube_prim = stage.GetPrimAtPath(prim_path)
+    
+    # Apply RigidBody and Collision APIs
+    UsdPhysics.RigidBodyAPI.Apply(cube_prim)
+    
+    # Apply collision to the geometry
+    cube_geom_prim = stage.GetPrimAtPath(cube_path)
+    UsdPhysics.CollisionAPI.Apply(cube_geom_prim)
+    
+    # Add mass (default 0.1 kg for small cube)
+    mass_api = UsdPhysics.MassAPI.Apply(cube_prim)
+    mass_api.GetMassAttr().Set(0.1)
+    
+    return cube_prim
+
+
+class DynamicCuboidWrapper:
+    """
+    Wrapper class to provide DynamicCuboid-like interface for Isaac Sim 5.1.
+    """
+    def __init__(self, prim_path: str, name: str, position, size: float, color):
+        self.prim_path = prim_path
+        self.name = name
+        self._position = np.array(position)
+        self._size = size
+        self._color = color
+        self._prim = None
+        self._stage = None
+    
+    def initialize(self, stage):
+        """Initialize the cuboid in the stage"""
+        self._stage = stage
+        self._prim = create_dynamic_cuboid(
+            stage, self.prim_path, self._position, self._size, self._color, self.name
+        )
+    
+    def get_world_pose(self):
+        """Get world position and orientation"""
+        from pxr import UsdGeom, Gf
+        if self._prim is None:
+            return self._position, np.array([1, 0, 0, 0])
+        
+        xformable = UsdGeom.Xformable(self._prim)
+        world_transform = xformable.ComputeLocalToWorldTransform(0)
+        translation = world_transform.ExtractTranslation()
+        
+        # Extract rotation as quaternion (simplified - identity for now)
+        return np.array([translation[0], translation[1], translation[2]]), np.array([1, 0, 0, 0])
+    
+    def set_world_pose(self, position=None, orientation=None):
+        """Set world position"""
+        from pxr import UsdGeom, Gf
+        if self._prim is None or position is None:
+            return
+        
+        xformable = UsdGeom.Xformable(self._prim)
+        # Clear existing ops and set new translation
+        xformable.ClearXformOpOrder()
+        xformable.AddTranslateOp().Set(Gf.Vec3d(*position))
+    
+    def set_linear_velocity(self, velocity):
+        """Set linear velocity (requires physics step)"""
+        pass  # Velocity is handled by physics engine
+    
+    def set_angular_velocity(self, velocity):
+        """Set angular velocity (requires physics step)"""
+        pass  # Velocity is handled by physics engine
+    
+    def set_default_state(self, position=None, orientation=None):
+        """Set default state for reset"""
+        if position is not None:
+            self._position = np.array(position)
+            self.set_world_pose(position=position)
 
 # 🔥 v3.5: 모듈화된 컴포넌트 임포트
 from controllers.gripper import Gripper
@@ -378,9 +468,9 @@ class RoArmPickPlaceEnv(gym.Env):
         print(f"  ✅ 로봇 임포트 성공!")
         print(f"  � Prim path: {prim_path}")
         
-        # Articulation 생성 (반환된 prim_path 사용)
+        # SingleArticulation 생성 (반환된 prim_path 사용) - ✅ Isaac Sim 5.1 API
         self.robot = self.world.scene.add(
-            Articulation(prim_path=prim_path, name="roarm_m3")
+            SingleArticulation(prim_path=prim_path, name="roarm_m3")
         )
         
         # World reset으로 articulation 초기화
@@ -445,20 +535,20 @@ class RoArmPickPlaceEnv(gym.Env):
         """물체 및 타겟 생성"""
         print(f"\n📦 물체 생성 중...")
         
-        # 큐브 생성 (Pick 대상)
-        self.cube = self.world.scene.add(
-            DynamicCuboid(
-                prim_path="/World/cube",
-                name="cube",
-                position=np.array(self.cfg.object_position),
-                size=self.cfg.object_size[0],  # 정육면체
-                color=np.array([0.8, 0.2, 0.2]),  # 빨간색
-            )
+        stage = self.world.stage
+        
+        # 큐브 생성 (Pick 대상) - Isaac Sim 5.1 방식
+        self.cube = DynamicCuboidWrapper(
+            prim_path="/World/cube",
+            name="cube",
+            position=np.array(self.cfg.object_position),
+            size=self.cfg.object_size[0],  # 정육면체
+            color=np.array([0.8, 0.2, 0.2]),  # 빨간색
         )
+        self.cube.initialize(stage)
         print(f"  ✅ 큐브 생성: {self.cfg.object_position}")
         
         # 🔥 v3.5 FIX #4: 큐브에 고마찰 Physics Material 적용
-        stage = self.world.stage
         cube_prim = stage.GetPrimAtPath("/World/cube")
         
         if cube_prim and cube_prim.IsValid():
@@ -483,16 +573,15 @@ class RoArmPickPlaceEnv(gym.Env):
             binding_api.Bind(UsdShade.Material(mat_prim))
             print(f"    ✅ 큐브에 고마찰 Material 적용")
         
-        # 타겟 마커 생성 (시각적 목표)
-        self.target = self.world.scene.add(
-            DynamicCuboid(
-                prim_path="/World/target",
-                name="target",
-                position=np.array(self.cfg.target_position),
-                size=self.cfg.object_size[0],
-                color=np.array([0.2, 0.8, 0.2]),  # 초록색
-            )
+        # 타겟 마커 생성 (시각적 목표) - Isaac Sim 5.1 방식
+        self.target = DynamicCuboidWrapper(
+            prim_path="/World/target",
+            name="target",
+            position=np.array(self.cfg.target_position),
+            size=self.cfg.object_size[0],
+            color=np.array([0.2, 0.8, 0.2]),  # 초록색
         )
+        self.target.initialize(stage)
         # 타겟은 정적 (kinematic)으로 설정
         self.target.set_default_state(position=np.array(self.cfg.target_position))
         

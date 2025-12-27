@@ -10,12 +10,12 @@ import numpy as np
 from typing import Optional, Tuple, Dict, List
 import random
 
-# Isaac Sim Imports
-from omni.isaac.core import World
-from omni.isaac.core.articulations import Articulation
-from omni.isaac.core.utils.stage import add_reference_to_stage
-from omni.isaac.core.prims import RigidPrim, GeometryPrim
-from omni.isaac.core.utils.prims import get_prim_at_path
+# Isaac Sim 5.1 Imports
+from isaacsim.core.api import World
+from isaacsim.core.prims import SingleArticulation  # ✅ 5.1 API
+from isaacsim.core.utils.stage import add_reference_to_stage
+from isaacsim.core.prims import RigidPrim, XFormPrim  # ✅ 5.1 API
+from isaacsim.core.utils.prims import get_prim_at_path
 import omni.kit.commands
 
 
@@ -135,7 +135,7 @@ class RoArmPickPlaceIsaacEnv:
         
         # 3. 로봇 Import (URDF)
         print("   🤖 RoArm M3 로딩 중...")
-        from omni.isaac.urdf import _urdf
+        from isaacsim.asset.importer.urdf import _urdf  # ✅ Isaac Sim 5.1 API
         import_config = _urdf.ImportConfig()
         import_config.merge_fixed_joints = False
         import_config.fix_base = True
@@ -152,7 +152,7 @@ class RoArmPickPlaceIsaacEnv:
         if not success:
             raise RuntimeError(f"URDF import 실패: {self.urdf_path}")
         
-        self.robot = self.world.scene.add(Articulation(prim_path="/World/RoArm_M3"))
+        self.robot = self.world.scene.add(SingleArticulation(prim_path="/World/RoArm_M3", name="roarm_m3"))
         
         # 4. 물체 풀 생성 (에피소드마다 랜덤 선택)
         self.object_pool = self._create_object_pool()
@@ -255,15 +255,8 @@ class RoArmPickPlaceIsaacEnv:
         xform.AddTranslateOp().Set(Gf.Vec3d(0.4, 0.3, 0.71))  # 테이블 위 71cm
         
         # 초록색 Material
-        from omni.isaac.core.materials import PreviewSurface
-        target_mat = PreviewSurface(
-            prim_path=f"{target_path}/Material",
-            color=np.array([0.0, 1.0, 0.0]),  # 초록색
-            opacity=0.3  # 투명
-        )
-        
-        # Physics 비활성화 (시각적 마커만)
-        GeometryPrim(prim_path=target_path, collision=False)
+        # 색상 적용 (Isaac Sim 5.1 방식)
+        cylinder_geom.GetDisplayColorAttr().Set([(0.0, 1.0, 0.0)])  # 초록색
         
         self.target_position = np.array([0.4, 0.3, 0.71])
     

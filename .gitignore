@@ -78,7 +78,8 @@ logs/isaac/env_*.txt
 
 # Environment
 .env.local
-envs/*/
+# Note: envs/ contains RL environment code, NOT virtual environments
+# Virtual environments are already covered by venv/, env/, ENV/, .venv above
 *.pyc
 __pycache__/
 

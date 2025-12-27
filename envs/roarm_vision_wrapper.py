@@ -170,7 +170,8 @@ def create_roarm_vision_env(obs_mode="vector", **kwargs):
 if __name__ == "__main__":
     print("이 모듈은 AppLauncher가 실행된 후에만 import 가능합니다.")
     print("사용 예시:")
-    print("  from isaaclab.app import AppLauncher")
+    print("  # TODO_5.1: Isaac Lab not available in 5.1, consider using native API
+# from omni.isaac.lab.app import AppLauncher")
     print("  app_launcher = AppLauncher(args)")
     print("  simulation_app = app_launcher.app")
     print("  ")
