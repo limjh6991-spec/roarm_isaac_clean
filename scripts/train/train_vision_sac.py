@@ -9,37 +9,64 @@ Usage:
 
 import sys
 import os
+import argparse
+import warnings
+
+# 🔧 FIX: Suppress gym deprecation warning
+warnings.filterwarnings("ignore", message=".*Gym has been unmaintained.*")
+os.environ["GYM_IGNORE_DEPRECATION_WARNINGS"] = "1"
+
+# 🔧 FIX: stdout 리다이렉트 제거 (Isaac Sim 로깅 충돌 방지)
+sys.stdout = sys.__stdout__
+sys.stderr = sys.__stderr__
+
+# ✅ SimulationApp 먼저 초기화 (다른 import 전에)
+from isaacsim import SimulationApp
+simulation_app = SimulationApp({"headless": True})
+
+print("="*80, flush=True)
+print("🚀 SAC Vision Training - SimulationApp 초기화 완료!", flush=True)
+print("="*80, flush=True)
+
 sys.path.append(os.path.join(os.path.dirname(__file__), "../.."))
+
+print("\n🔧 Importing dependencies...", flush=True)
 
 import numpy as np
 from datetime import datetime
 from pathlib import Path
 
+print("✅ Basic imports successful", flush=True)
+
 from stable_baselines3 import SAC
 from stable_baselines3.common.callbacks import CheckpointCallback, EvalCallback
 from stable_baselines3.common.monitor import Monitor
 
-from envs.roarm_pick_place_env_vision import RoArmPickPlaceVisionEnv, RoArmPickPlaceVisionEnvCfg
+print("✅ Stable-baselines3 imported", flush=True)
+
+from envs.simple_vision_env_v2 import SimpleVisionEnv  # CPU annotator version
 from models.cnn_extractor import NatureCNN
+
+print("✅ Environment and model imported", flush=True)
 
 
 def create_env(render=False):
     """Create vision environment"""
-    cfg = RoArmPickPlaceVisionEnvCfg()
-    env = RoArmPickPlaceVisionEnv(cfg, render_mode="human" if render else None)
-    env = Monitor(env)
+    env = SimpleVisionEnv()
+    # Note: Monitor wrapper removed due to gym/gymnasium compatibility issue
+    # Stable-baselines3 2.7.0 should work with gymnasium directly
     return env
 
 
-def train_sac():
+def train_sac(total_timesteps=50000):
     """Train SAC on vision task"""
     print("=" * 80)
-    print("🚀 Training SAC on RoArm Vision Task")
+    print(f"🚀 Training SAC on RoArm Vision Task ({total_timesteps:,} timesteps)")
     print("=" * 80)
     
     # Create output directory
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    output_dir = Path(f"output/train_vision_sac/{timestamp}")
+    output_dir = Path(f"logs/sac_training/{timestamp}")
     output_dir.mkdir(parents=True, exist_ok=True)
     
     print(f"\n📁 Output directory: {output_dir}")
@@ -47,7 +74,8 @@ def train_sac():
     # Create environments
     print("\n1. Creating environments...")
     train_env = create_env(render=False)
-    eval_env = create_env(render=False)
+    # Note: Using same environment for eval to avoid World name conflicts
+    eval_env = train_env  
     print("✅ Environments created")
     
     # Policy kwargs with NatureCNN
@@ -84,12 +112,15 @@ def train_sac():
     print(f"   Device: cuda")
     
     # Callbacks
+    # 🔧 디스크 관리 정책 (2024-12-27):
+    #    - Replay buffer 저장 비활성화 (각 22GB로 디스크 폭발 방지)
+    #    - 체크포인트 간격 50K 스텝 (500K 학습 시 ~10개 체크포인트)
     print("\n4. Setting up callbacks...")
     checkpoint_callback = CheckpointCallback(
-        save_freq=10_000,  # Save every 10K steps
+        save_freq=50_000,  # Save every 50K steps (디스크 절약)
         save_path=str(output_dir / "checkpoints"),
         name_prefix="sac_vision",
-        save_replay_buffer=True,
+        save_replay_buffer=False,  # ⚠️ 비활성화: 각 22GB로 디스크 폭발 위험
         save_vecnormalize=True,
     )
     
@@ -97,27 +128,26 @@ def train_sac():
         eval_env,
         best_model_save_path=str(output_dir / "best_model"),
         log_path=str(output_dir / "eval"),
-        eval_freq=10_000,  # Evaluate every 10K steps
+        eval_freq=50_000,  # Evaluate every 50K steps
         n_eval_episodes=10,
         deterministic=True,
         render=False,
     )
     
     callbacks = [checkpoint_callback, eval_callback]
-    print("✅ Callbacks configured")
-    print(f"   Checkpoint: every 10K steps")
-    print(f"   Evaluation: every 10K steps (10 episodes)")
+    print("✅ Callbacks configured (Disk-optimized)")
+    print(f"   Checkpoint: every 50K steps (no replay buffer)")
+    print(f"   Evaluation: every 50K steps (10 episodes)")
     
     # Training
     print("\n5. Starting training...")
-    print(f"   Total timesteps: 500K")
-    print(f"   Estimated time: 5-10 hours")
+    print(f"   Total timesteps: {total_timesteps:,}")
     print(f"   TensorBoard: tensorboard --logdir {output_dir / 'tensorboard'}")
     print("")
     
     try:
         model.learn(
-            total_timesteps=500_000,  # 500K steps
+            total_timesteps=total_timesteps,
             callback=callbacks,
             log_interval=10,
             progress_bar=True,
@@ -139,9 +169,8 @@ def train_sac():
         print(f"✅ Interrupted model saved: {interrupted_model_path}")
     
     finally:
-        # Close environments
+        # Close environments (train_env only since eval_env is the same)
         train_env.close()
-        eval_env.close()
         print("\n✅ Environments closed")
     
     print("\n" + "=" * 80)
@@ -155,4 +184,25 @@ def train_sac():
 
 
 if __name__ == "__main__":
-    train_sac()
+    print("\n" + "=" * 80, flush=True)
+    print("🎯 Main script starting...", flush=True)
+    print("=" * 80, flush=True)
+    
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--headless", action="store_true", help="Run in headless mode (ignored, always headless)")
+    parser.add_argument("--total_timesteps", type=int, default=50000, help="Total training timesteps")
+    args = parser.parse_args()
+    
+    print(f"\n📊 Arguments parsed: total_timesteps={args.total_timesteps}", flush=True)
+    
+    try:
+        print("\n🚀 Starting SAC training...", flush=True)
+        train_sac(total_timesteps=args.total_timesteps)
+    except Exception as e:
+        print(f"\n❌ Training error: {e}", flush=True)
+        import traceback
+        traceback.print_exc()
+    finally:
+        # SimulationApp 정리
+        simulation_app.close()
+        print("\n✅ SimulationApp closed", flush=True)

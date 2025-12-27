@@ -1,16 +1,16 @@
 # 🤖 RoArm Isaac Clean - AI 컨텍스트 프롬프트
 
-> **마지막 업데이트**: 2025-12-27 12:32
+> **마지막 업데이트**: 2025-12-27 14:30
 > **이 파일을 읽고 현재 프로젝트 상태를 파악하세요.**
 
 ---
 
 ## 📍 프로젝트 개요
 
-**프로젝트명**: RoArm-M3 Isaac Sim RL
-**목표**: RoArm-M3 로봇 암으로 Pick and Place 작업을 Vision RL로 학습
-**시뮬레이터**: NVIDIA Isaac Sim 5.1.0 GA
-**RL 프레임워크**: Stable-Baselines3 (SAC 알고리즘 권장)
+**프로젝트명**: RoArm-M3 Isaac Sim RL  
+**목표**: RoArm-M3 로봇 암으로 Pick and Place 작업을 Vision RL로 학습  
+**시뮬레이터**: NVIDIA Isaac Sim 5.1.0 GA  
+**RL 프레임워크**: Stable-Baselines3 (SAC 알고리즘)  
 **하드웨어**: RTX 5090 (Blackwell)
 
 ---
@@ -20,8 +20,6 @@
 ### 1. 프로젝트 구조 리팩토링
 - **configs 시스템 구축**: `configs/base.yaml`, `configs/vision_rl.yaml`, `configs/config_loader.py`
 - **Scene 유틸 분리**: `envs/scene/scene_builder.py` (DynamicCuboidWrapper)
-- **Deprecated 모듈 표시**: `rewards/__init__.py`에 경고 추가
-- **.gitignore 수정**: envs 서브디렉토리 추적 허용
 
 ### 2. Isaac Sim 5.1 API 호환성 업데이트
 | 파일 | 변경 내용 |
@@ -29,11 +27,13 @@
 | `envs/roarm_pick_place_env.py` | `Articulation` → `SingleArticulation` |
 | `envs/robot/robot_controller.py` | `ArticulationAction` import 경로 |
 | `envs/roarm_pickplace_isaac_assets.py` | 5개 import 수정 |
-| `scripts/utils/urdf_to_usd.py` | URDF importer 경로 |
 
-### 3. Clean Architecture 분석
-- **결론**: 전체 CA 적용 비추천 (1인 연구 프로젝트, Isaac Sim 단일)
-- **적용된 것**: 부분 리팩토링 (configs 분리, scene 유틸 분리)
+### 3. 디스크 관리 정책 구현 ⭐ (신규)
+| 항목 | 변경 내용 |
+|------|----------|
+| Replay buffer 저장 | `True` → `False` (각 22GB 방지) |
+| 체크포인트 간격 | 10K → 50K 스텝 |
+| 500K 학습 예상 용량 | ~1.1TB → **~660MB** |
 
 ---
 
