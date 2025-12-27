@@ -167,21 +167,30 @@ SimulationContext(use_fabric=True)
 
 ---
 
-## 🔧 프로젝트 스크립트 업데이트 필요 항목
+## 🔧 프로젝트 스크립트 업데이트 상태
 
-### 1. `envs/simple_vision_env.py`
-- [ ] `from isaacsim.core.api.articulations import Articulation` → 수정 필요
-- [ ] Isaac Lab의 `ArticulationCfg` 대신 native API 사용
-- [ ] Camera 초기화 로직 수정
+### ✅ 완료된 항목 (2025-12-27)
 
-### 2. `scripts/test/test_vision_env.py`
-- [ ] AppLauncher 대신 SimulationApp 사용
-- [ ] import 경로 업데이트
+#### 핵심 환경 파일
+- [x] `envs/roarm_pick_place_env.py` - `SingleArticulation` 사용
+- [x] `envs/roarm_pickplace_isaac_assets.py` - 5개 import 수정
+- [x] `envs/robot/robot_controller.py` - `ArticulationAction` 경로
+- [x] `envs/simple_vision_env_v2.py` - 최신 API 적용됨
+- [x] `scripts/utils/urdf_to_usd.py` - URDF importer 경로
 
-### 3. `scripts/train/train_vision_sac.py`
-- [ ] Environment wrapper 업데이트
-- [ ] Isaac Lab 호환성 확인
+#### 새로 추가된 파일
+- [x] `configs/config_loader.py` - 설정 관리 시스템
+- [x] `envs/scene/scene_builder.py` - Scene 유틸리티
+
+### ⚠️ 선택적 업데이트 (테스트 스크립트)
+- [ ] `scripts/test/test_camera_urdf.py`
+- [ ] `scripts/test/test_camera_urdf_simple.py`
+- [ ] `scripts/test/view_home_position.py`
+- [ ] 기타 `scripts/test/` 파일들 (약 15개)
+
+> 📌 테스트 스크립트는 핵심 기능에 영향 없음. 필요 시 업데이트.
 
 ---
 
-*이 문서는 2025-12-27 기준으로 작성되었습니다.*
+*마지막 업데이트: 2025-12-27 12:38*
+

@@ -1,136 +1,87 @@
 # RoArm-M3 Isaac Sim RL Training
 
-RoArm-M3 로봇팔의 Pick and Place 작업을 위한 강화학습 환경 (Isaac Sim 5.0 + PPO)
+RoArm-M3 로봇팔의 Pick and Place 작업을 위한 강화학습 환경
 
 ## 📊 현재 상태
 
-**최신 버전**: v3.7.3 (2025-10-22)  
-**Training Phase**: Phase 0 (Easy Mode)  
-**Total Steps**: 100K (완료)
+**Isaac Sim**: 5.1.0 GA  
+**RL Algorithm**: SAC (권장) / PPO  
+**Phase**: Vision RL (VRL) 전환 중
 
-### 🔬 실험 히스토리
-
-#### v3.7.3 (최신) - ❌ 실패
-- **목표**: Joint limits 확장 (±90° → ±180°) + Gripper width bug fix
-- **결과**: REACH 11% (v3.7.2 대비 -69%)
-- **원인**: 탐색 공간 4배 증가, 100K steps 부족
-- **교훈**: 물리적 자유도 ↑ ≠ 학습 성능 ↑
-- **상세**: `logs/v3.7.3_FINAL_SUMMARY.md`
-
-#### v3.7.2 (Baseline) - ✅ 최고 성능
-- **REACH**: 36.2% ✅
-- **최소 거리**: 5.5cm ✅
-- **문제**: Gripper width bug (obs[23]=0)
-- **상태**: 백업 보관 (`final_model_v3.7.2_backup/`)
-
-#### 다음 계획: v3.7.4
-- **전략**: v3.7.2 base + Gripper bug fix만 적용
-- **목표**: REACH 36% + GRIP 첫 달성
-- **예상 시간**: ~4분
-- **성공 확률**: 높음
-
-## 🎯 보상 시스템 (Shaped-Sparse)
-
-```
-근접 (+5)   : EE→큐브 5cm          ✅ 달성!
-그립 (+10)  : 유효 그립 3프레임    ❌ 학습 중
-리프트 (+15): 큐브 5cm 상승        ❌ 학습 중  
-목표 (+20)  : 큐브→타겟 8cm        ❌ 학습 중
-Success (+100): 타겟 5cm 5프레임   ❌ 학습 중
-Time (-0.01): 효율성 패널티
-```
+### 최근 업데이트 (2025-12-27)
+- ✅ Isaac Sim 5.1 API 마이그레이션 완료
+- ✅ 프로젝트 구조 리팩토링 (configs, scene 분리)
+- ✅ `SingleArticulation` API 적용
+- 🔄 VRL 학습 준비 완료
 
 ## 🏗️ 프로젝트 구조
 
 ```
 roarm_isaac_clean/
-├── assets/roarm_m3/          # RoArm-M3 URDF, meshes
-├── envs/                     # RL 환경 (Shaped-Sparse + Curriculum)
-├── scripts/                  # 학습/테스트 스크립트
-├── logs/                     # 학습 로그 및 체크포인트
-│   └── rl_training_curriculum/
-│       └── checkpoints/      # 9개 체크포인트 (5K~50K)
-├── docs/                     # 문서
-│   └── TRAINING_LOG_20251019.md
-└── README.md
-
+├── configs/                    # ✨ 설정 파일 (YAML)
+│   ├── base.yaml              # 환경/로봇/리워드 설정
+│   ├── vision_rl.yaml         # VRL 전용 설정
+│   └── config_loader.py       # 설정 로더
+├── envs/                       # RL 환경
+│   ├── scene/                 # Scene 유틸리티
+│   ├── robot/                 # 로봇 제어
+│   ├── reward/                # 리워드 계산
+│   ├── observation/           # 관측 생성
+│   ├── roarm_pick_place_env.py     # 메인 환경
+│   └── simple_vision_env_v2.py     # Vision RL 환경
+├── scripts/                    # 학습/테스트 스크립트
+│   ├── train/                 # 학습 스크립트
+│   ├── test/                  # 테스트 스크립트
+│   └── launch_vision_rl.sh    # VRL 실행
+├── assets/roarm_m3/           # URDF, USD 모델
+├── resources/                  # 문서
+│   ├── PROJECT_STATUS.md      # 📌 AI 컨텍스트
+│   └── isaac_sim_5_1_*.md     # API 가이드
+└── logs/                       # 학습 로그
 ```
 
 ## 🚀 빠른 시작
 
-### 1. 환경 설정
+### 1. Config 테스트
 ```bash
-# Isaac Sim 5.0 설치 필요
-# conda 환경 설정 (선택)
+python configs/config_loader.py
 ```
 
-### 2. 학습 실행
+### 2. 환경 테스트 (GUI)
 ```bash
-cd ~/roarm_isaac_clean
-~/isaacsim/python.sh scripts/train_dense_reward.py
+python envs/simple_vision_env_v2.py
 ```
 
-### 3. GUI 테스트
+### 3. VRL 학습 실행
 ```bash
-~/isaacsim/python.sh scripts/test_trained_model.py \
-  --model logs/rl_training_curriculum/checkpoints/roarm_ppo_curriculum_50000_steps.zip \
-  --episodes 3
+./scripts/launch_vision_rl.sh
 ```
-
-## 📈 학습 이력
-
-### Dense Reward (실패 - 폐기)
-- 개선 보상 누적으로 정책 붕괴 (ep_rew: +916)
-- EV 0.00006, VL 855
-
-### Sparse Reward (안정화)
-- 100K steps 완료
-- EV 4,717배, VL 6,287배 개선
-- 문제: Success 신호 부족
-
-### Shaped-Sparse + Curriculum (현재)
-- 100K steps (Phase 0 Easy Mode)
-- REACH 마일스톤: 12회 달성! ✅
-- **이슈 발견**: GRIP 미달성 (URDF 그리퍼 문제)
-- **다음**: URDF 수정 후 50K 재학습
 
 ## 🔧 기술 스택
 
-- **Isaac Sim**: 5.0
-- **RL Library**: Stable-Baselines3 (PPO)
-- **Python**: 3.11
-- **Framework**: omni.isaac.lab (deprecated APIs 사용)
+| 항목 | 버전 |
+|------|------|
+| Isaac Sim | 5.1.0 GA |
+| RL Library | Stable-Baselines3 |
+| Algorithm | SAC (VRL) / PPO |
+| Python | 3.11 |
+| GPU | RTX 5090 (Blackwell) |
 
 ## 📝 주요 파일
 
-- `envs/roarm_pick_place_env.py`: Shaped-Sparse 보상 + Curriculum 환경
-- `scripts/train_dense_reward.py`: PPO 학습 스크립트
-- `scripts/early_warning_callback.py`: EV/VL 자동 감지 콜백
-- `scripts/test_trained_model.py`: GUI 테스트 스크립트
+| 파일 | 설명 |
+|------|------|
+| `envs/roarm_pick_place_env.py` | 메인 RL 환경 (1546줄) |
+| `envs/simple_vision_env_v2.py` | Vision RL 환경 (457줄) |
+| `configs/config_loader.py` | 설정 관리 시스템 |
+| `resources/PROJECT_STATUS.md` | AI 컨텍스트 프롬프트 |
 
-## 🚧 개선 필요 사항 (우선순위)
+## 📚 문서
 
-### 1. URDF 수정 (최우선!) 🚨
-- **그리퍼 조인트**: Fixed → Prismatic 변경
-- **Joint limits**: 0~25mm 추가
-- **그리퍼 형태**: 평행 그리퍼 재설계
-- **Link 크기**: 실제 RoArm M3 사양 반영
-- **검증**: Isaac Sim 임포트 테스트
-
-### 2. 학습 재개 (URDF 수정 후)
-- 50K steps 테스트 학습
-- GRIP 마일스톤 1회 이상 목표
-- 성공 시 1M steps 장기 학습
-
-### 3. Phase 1 전환 (최종)
-- Normal Mode (큐브 25~35cm, 타겟 25~35cm)
-- 성공률 ≥60% 목표
-
-## 📚 참고 문서
-
-- [내일 할 일](docs/TODO_20251020.md) ⭐
-- [이슈 분석](docs/ISSUE_ANALYSIS_20251019.md)
-- [Training Log](docs/TRAINING_LOG_20251019.md)
+- [PROJECT_STATUS.md](resources/PROJECT_STATUS.md) - 현재 상태 및 다음 작업
+- [Isaac Sim 5.1 API Guide](resources/isaac_sim_5_1_api_guide.md)
+- [VRL Algorithm Recommendations](resources/vrl_algorithm_recommendations.md)
+- [Isaac Sim 5.1 Cheatsheet](resources/isaac_sim_5_1_cheatsheet.md)
 
 ## 👥 기여자
 
@@ -138,15 +89,4 @@ cd ~/roarm_isaac_clean
 
 ---
 
-**Last Updated**: 2025-10-19  
-**Status**: Phase 0 학습 완료, 장기 학습 준비 중
-
-## 📚 Documentation
-
-See [Documentation Index](DOCUMENTATION_INDEX.md) for all available documentation.
-
-### Quick Links
-- [Training Guide](docs/root_archive/EASY_MODE_TRAINING_GUIDE.md)
-- [Visualization](docs/root_archive/MODEL_VISUALIZATION_GUIDE.md)
-- [Hardware Control](docs/root_archive/ROARM_M3_HARDWARE_CONTROL.md)
-- [Phase 2 Plan](docs/PHASE2_VISION_BASED_RL_PLAN.md)
+**Last Updated**: 2025-12-27
