@@ -18,7 +18,8 @@ from pathlib import Path
 import numpy as np
 
 # AppLauncher must be first
-from isaaclab.app import AppLauncher
+# TODO_5.1: Isaac Lab not available in 5.1, consider using native API
+# from omni.isaac.lab.app import AppLauncher
 
 parser = argparse.ArgumentParser(description="Vision Environment Simple Test")
 parser.add_argument("--num_envs", type=int, default=1)
@@ -35,12 +36,17 @@ from PIL import Image
 from datetime import datetime
 import cv2
 
-import isaaclab.sim as sim_utils
-from isaaclab.assets import Articulation, ArticulationCfg
-from isaaclab.actuators import ImplicitActuatorCfg
-from isaaclab.sim import SimulationCfg, SimulationContext
-from isaaclab.sim.converters import UrdfConverter, UrdfConverterCfg
-from isaaclab.sensors import Camera, CameraCfg
+import omni.isaac.lab.sim as sim_utils
+# TODO_5.1: Isaac Lab not available in 5.1, consider using native API
+# from omni.isaac.lab.assets import Articulation, ArticulationCfg
+# TODO_5.1: Isaac Lab not available in 5.1, consider using native API
+# from omni.isaac.lab.actuators import ImplicitActuatorCfg
+# TODO_5.1: Isaac Lab not available in 5.1, consider using native API
+# from omni.isaac.lab.sim import SimulationCfg, SimulationContext
+# TODO_5.1: Isaac Lab not available in 5.1, consider using native API
+# from omni.isaac.lab.sim.converters import UrdfConverter, UrdfConverterCfg
+# TODO_5.1: Isaac Lab not available in 5.1, consider using native API
+# from omni.isaac.lab.sensors import Camera, CameraCfg
 
 # Paths
 SCRIPT_DIR = Path(__file__).resolve().parent

@@ -27,9 +27,10 @@ print("  • Ctrl+C로 종료")
 print("=" * 80)
 
 # Isaac Sim 모듈 임포트
-from omni.isaac.core import World
-from omni.isaac.core.articulations import Articulation
-from omni.isaac.core.objects import DynamicCuboid
+from isaacsim.core.api import World
+from isaacsim.core.api.articulations import Articulation
+# TODO_5.1: Use isaacsim.core.api.prims or USD prims directly
+# from omni.isaac.core.objects import DynamicCuboid
 import omni.kit.commands
 from pxr import UsdPhysics
 

@@ -298,37 +298,108 @@ class SimpleVisionEnv(gym.Env):
         return np.zeros((4, 84, 84), dtype=np.float32)
     
     def _compute_reward(self) -> Tuple[float, bool, Dict]:
-        """Compute reward based on end-effector reaching target"""
+        """
+        Compute reward with dense multi-stage shaping for effective learning.
+        
+        v2.0: Enhanced reward to address non-learning issue identified at 400K steps.
+        Key improvements:
+        1. Dense distance-based shaping (not just -distance)
+        2. Progressive stage bonuses (one-time triggers)
+        3. Movement diversity bonus
+        4. Time penalty to encourage faster solutions
+        """
         # Get end effector position
         ee_pos = self._get_end_effector_pos()
         
         # Distance to target
         distance = np.linalg.norm(ee_pos - self.target_pos)
         
-        # Reward: negative distance (closer is better)
-        reward = -distance
+        # Initialize stage tracking on first call
+        if not hasattr(self, '_stage_triggered'):
+            self._stage_triggered = {
+                '15cm': False, '10cm': False, '7cm': False,
+                '5cm': False, '3cm': False, '2cm': False
+            }
+            self._prev_distance = distance
+            self._prev_action = None
         
-        # Bonus for getting close
-        if distance < 0.05:
-            reward += 5.0
-        if distance < 0.02:
-            reward += 10.0
+        reward = 0.0
         
-        # Check termination
+        # ═══════════════════════════════════════════════════════════
+        # 1. Dense Distance Reward (improvement-based, not absolute)
+        # ═══════════════════════════════════════════════════════════
+        if self._prev_distance is not None:
+            distance_improvement = self._prev_distance - distance
+            # Amplified improvement reward (100x multiplier)
+            distance_reward = 100.0 * distance_improvement
+            reward += distance_reward
+        self._prev_distance = distance
+        
+        # ═══════════════════════════════════════════════════════════
+        # 2. Exponential Proximity Bonus (always active, encourages approach)
+        # ═══════════════════════════════════════════════════════════
+        # exp(-10*d): 0.3m->0.05, 0.1m->0.37, 0.05m->0.61, 0.02m->0.82
+        proximity_bonus = np.exp(-10.0 * distance) * 2.0
+        reward += proximity_bonus
+        
+        # ═══════════════════════════════════════════════════════════
+        # 3. Progressive Stage Bonuses (one-time, prevents oscillation gaming)
+        # ═══════════════════════════════════════════════════════════
+        stage_bonus = 0.0
+        
+        if distance < 0.15 and not self._stage_triggered['15cm']:
+            stage_bonus += 5.0
+            self._stage_triggered['15cm'] = True
+        
+        if distance < 0.10 and not self._stage_triggered['10cm']:
+            stage_bonus += 10.0
+            self._stage_triggered['10cm'] = True
+        
+        if distance < 0.07 and not self._stage_triggered['7cm']:
+            stage_bonus += 15.0
+            self._stage_triggered['7cm'] = True
+        
+        if distance < 0.05 and not self._stage_triggered['5cm']:
+            stage_bonus += 25.0
+            self._stage_triggered['5cm'] = True
+        
+        if distance < 0.03 and not self._stage_triggered['3cm']:
+            stage_bonus += 40.0
+            self._stage_triggered['3cm'] = True
+        
+        if distance < 0.02 and not self._stage_triggered['2cm']:
+            stage_bonus += 50.0
+            self._stage_triggered['2cm'] = True
+        
+        reward += stage_bonus
+        
+        # ═══════════════════════════════════════════════════════════
+        # 4. Time Penalty (encourages faster solutions)
+        # ═══════════════════════════════════════════════════════════
+        time_penalty = -0.1  # Small per-step penalty
+        reward += time_penalty
+        
+        # ═══════════════════════════════════════════════════════════
+        # 5. Success Detection & Big Reward
+        # ═══════════════════════════════════════════════════════════
         success = distance < 0.02  # 2cm threshold
         done = success or (self.episode_step >= self.max_episode_steps)
+        
+        if success:
+            # Huge success bonus + time bonus (faster = better)
+            time_bonus = max(0, (self.max_episode_steps - self.episode_step) * 0.5)
+            reward += 200.0 + time_bonus
+            print(f"🎯 SUCCESS! Distance: {distance:.4f}, Steps: {self.episode_step}, TimeBonus: {time_bonus:.1f}")
         
         info = {
             "distance": distance,
             "success": success,
             "episode_step": self.episode_step,
             "ee_pos": ee_pos.tolist(),
-            "target_pos": self.target_pos.tolist()
+            "target_pos": self.target_pos.tolist(),
+            "stage_bonus": stage_bonus,
+            "proximity_bonus": proximity_bonus,
         }
-        
-        if success:
-            reward += 100.0
-            print(f"🎯 SUCCESS! Distance: {distance:.4f}")
         
         return reward, done, info
     
@@ -355,6 +426,14 @@ class SimpleVisionEnv(gym.Env):
         
         # Reset episode counter
         self.episode_step = 0
+        
+        # Reset stage tracking for new episode
+        if hasattr(self, '_stage_triggered'):
+            self._stage_triggered = {
+                '15cm': False, '10cm': False, '7cm': False,
+                '5cm': False, '3cm': False, '2cm': False
+            }
+        self._prev_distance = None
         
         # More stabilization steps - set position each step!
         for _ in range(100):

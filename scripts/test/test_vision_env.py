@@ -3,29 +3,33 @@
 Vision Environment Test Script
 
 목표:
-1. RoArmPickPlaceVisionEnv 로드
+1. SimpleVisionEnv 로드
 2. Random policy로 rollout
 3. RGB-D 이미지 확인
 4. gym.check_env() 통과
 
 작성일: 2025-11-02
+Updated: 2025-12-27 - Isaac Sim 5.1 native API
 """
 
 import argparse
 import numpy as np
 from pathlib import Path
 
-# AppLauncher must be first
-from isaaclab.app import AppLauncher
+# Isaac Sim 5.1 native initialization (must be first!)
+from isaacsim import SimulationApp
 
 parser = argparse.ArgumentParser(description="Vision Environment Test")
 parser.add_argument("--num_envs", type=int, default=1, help="Number of environments")
 parser.add_argument("--headless", action="store_true", help="Run in headless mode")
-AppLauncher.add_app_launcher_args(parser)
 args_cli = parser.parse_args()
 
-app_launcher = AppLauncher(args_cli)
-simulation_app = app_launcher.app
+# Initialize simulation app
+simulation_app = SimulationApp({
+    "headless": args_cli.headless,
+    "width": 1280,
+    "height": 720,
+})
 
 """Rest everything follows."""
 
@@ -36,7 +40,7 @@ from PIL import Image
 # Import environment
 import sys
 sys.path.insert(0, str(Path(__file__).parents[2]))
-from envs.roarm_pick_place_env_vision import RoArmPickPlaceVisionEnv
+from envs.simple_vision_env import SimpleVisionEnv
 
 print("=" * 80)
 print("🎥 Vision Environment Test")
@@ -191,8 +195,7 @@ def main():
     
     try:
         # Create environment
-        # TODO: Load from config
-        env = RoArmPickPlaceVisionEnv()
+        env = SimpleVisionEnv()
         
         print("✅ Environment loaded successfully")
         

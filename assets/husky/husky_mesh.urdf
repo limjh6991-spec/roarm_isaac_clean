@@ -1,0 +1,275 @@
+<?xml version="1.0" ?>
+<!-- Clearpath Husky A200 URDF with Mesh Files -->
+<!-- Size: 99 x 67 x 39 cm -->
+<robot name="Husky">
+  
+  <!-- Base footprint -->
+  <link name="base_footprint"/>
+  
+  <!-- Base link (main chassis) -->
+  <link name="base_link">
+    <inertial>
+      <mass value="50.0"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <inertia ixx="2.0" ixy="0" ixz="0" iyy="5.5" iyz="0" izz="6.0"/>
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="/home/roarm_m3/roarm_isaac_clean/assets/husky/husky_ros/husky_description/meshes/base_link.dae"/>
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0.1" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.99 0.67 0.20"/>
+      </geometry>
+    </collision>
+  </link>
+  
+  <joint name="base_footprint_joint" type="fixed">
+    <parent link="base_footprint"/>
+    <child link="base_link"/>
+    <origin xyz="0 0 0.165" rpy="0 0 0"/>
+  </joint>
+  
+  <!-- Top chassis -->
+  <link name="top_chassis_link">
+    <inertial>
+      <mass value="5.0"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <inertia ixx="0.1" ixy="0" ixz="0" iyy="0.3" iyz="0" izz="0.35"/>
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="/home/roarm_m3/roarm_isaac_clean/assets/husky/husky_ros/husky_description/meshes/top_chassis.dae"/>
+      </geometry>
+    </visual>
+  </link>
+  
+  <joint name="top_chassis_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="top_chassis_link"/>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+  </joint>
+  
+  <!-- Top plate for mounting -->
+  <link name="top_plate_link">
+    <inertial>
+      <mass value="2.0"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <inertia ixx="0.02" ixy="0" ixz="0" iyy="0.05" iyz="0" izz="0.06"/>
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="/home/roarm_m3/roarm_isaac_clean/assets/husky/husky_ros/husky_description/meshes/top_plate.dae"/>
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.80 0.50 0.02"/>
+      </geometry>
+    </collision>
+  </link>
+  
+  <joint name="top_plate_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="top_plate_link"/>
+    <origin xyz="0.0812 0 0.245" rpy="0 0 0"/>
+  </joint>
+  
+  <!-- User rail -->
+  <link name="user_rail_link">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="/home/roarm_m3/roarm_isaac_clean/assets/husky/husky_ros/husky_description/meshes/user_rail.dae"/>
+      </geometry>
+    </visual>
+  </link>
+  
+  <joint name="user_rail_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="user_rail_link"/>
+    <origin xyz="0.272 0 0.245" rpy="0 0 0"/>
+  </joint>
+  
+  <!-- Front Bumper -->
+  <link name="front_bumper_link">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="/home/roarm_m3/roarm_isaac_clean/assets/husky/husky_ros/husky_description/meshes/bumper.dae"/>
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.05 0.56 0.10"/>
+      </geometry>
+    </collision>
+  </link>
+  
+  <joint name="front_bumper_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="front_bumper_link"/>
+    <origin xyz="0.48 0 0.091" rpy="0 0 0"/>
+  </joint>
+  
+  <!-- Rear Bumper -->
+  <link name="rear_bumper_link">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 3.14159"/>
+      <geometry>
+        <mesh filename="/home/roarm_m3/roarm_isaac_clean/assets/husky/husky_ros/husky_description/meshes/bumper.dae"/>
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.05 0.56 0.10"/>
+      </geometry>
+    </collision>
+  </link>
+  
+  <joint name="rear_bumper_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="rear_bumper_link"/>
+    <origin xyz="-0.48 0 0.091" rpy="0 0 0"/>
+  </joint>
+  
+  <!-- Front left wheel -->
+  <link name="front_left_wheel">
+    <inertial>
+      <mass value="2.5"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <inertia ixx="0.02" ixy="0" ixz="0" iyy="0.02" iyz="0" izz="0.03"/>
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="/home/roarm_m3/roarm_isaac_clean/assets/husky/husky_ros/husky_description/meshes/wheel.dae"/>
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="1.5708 0 0"/>
+      <geometry>
+        <cylinder length="0.11" radius="0.165"/>
+      </geometry>
+    </collision>
+  </link>
+  
+  <joint name="front_left_wheel_joint" type="continuous">
+    <parent link="base_link"/>
+    <child link="front_left_wheel"/>
+    <origin xyz="0.256 0.285 0" rpy="0 0 0"/>
+    <axis xyz="0 1 0"/>
+    <dynamics damping="0.7" friction="1.0"/>
+  </joint>
+  
+  <!-- Front right wheel -->
+  <link name="front_right_wheel">
+    <inertial>
+      <mass value="2.5"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <inertia ixx="0.02" ixy="0" ixz="0" iyy="0.02" iyz="0" izz="0.03"/>
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="3.14159 0 0"/>
+      <geometry>
+        <mesh filename="/home/roarm_m3/roarm_isaac_clean/assets/husky/husky_ros/husky_description/meshes/wheel.dae"/>
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="1.5708 0 0"/>
+      <geometry>
+        <cylinder length="0.11" radius="0.165"/>
+      </geometry>
+    </collision>
+  </link>
+  
+  <joint name="front_right_wheel_joint" type="continuous">
+    <parent link="base_link"/>
+    <child link="front_right_wheel"/>
+    <origin xyz="0.256 -0.285 0" rpy="0 0 0"/>
+    <axis xyz="0 1 0"/>
+    <dynamics damping="0.7" friction="1.0"/>
+  </joint>
+  
+  <!-- Rear left wheel -->
+  <link name="rear_left_wheel">
+    <inertial>
+      <mass value="2.5"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <inertia ixx="0.02" ixy="0" ixz="0" iyy="0.02" iyz="0" izz="0.03"/>
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="/home/roarm_m3/roarm_isaac_clean/assets/husky/husky_ros/husky_description/meshes/wheel.dae"/>
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="1.5708 0 0"/>
+      <geometry>
+        <cylinder length="0.11" radius="0.165"/>
+      </geometry>
+    </collision>
+  </link>
+  
+  <joint name="rear_left_wheel_joint" type="continuous">
+    <parent link="base_link"/>
+    <child link="rear_left_wheel"/>
+    <origin xyz="-0.256 0.285 0" rpy="0 0 0"/>
+    <axis xyz="0 1 0"/>
+    <dynamics damping="0.7" friction="1.0"/>
+  </joint>
+  
+  <!-- Rear right wheel -->
+  <link name="rear_right_wheel">
+    <inertial>
+      <mass value="2.5"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <inertia ixx="0.02" ixy="0" ixz="0" iyy="0.02" iyz="0" izz="0.03"/>
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="3.14159 0 0"/>
+      <geometry>
+        <mesh filename="/home/roarm_m3/roarm_isaac_clean/assets/husky/husky_ros/husky_description/meshes/wheel.dae"/>
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="1.5708 0 0"/>
+      <geometry>
+        <cylinder length="0.11" radius="0.165"/>
+      </geometry>
+    </collision>
+  </link>
+  
+  <joint name="rear_right_wheel_joint" type="continuous">
+    <parent link="base_link"/>
+    <child link="rear_right_wheel"/>
+    <origin xyz="-0.256 -0.285 0" rpy="0 0 0"/>
+    <axis xyz="0 1 0"/>
+    <dynamics damping="0.7" friction="1.0"/>
+  </joint>
+  
+  <!-- Arm mount point -->
+  <link name="arm_mount">
+    <inertial>
+      <mass value="0.1"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <inertia ixx="0.0001" ixy="0" ixz="0" iyy="0.0001" iyz="0" izz="0.0001"/>
+    </inertial>
+  </link>
+  
+  <joint name="arm_mount_joint" type="fixed">
+    <parent link="top_plate_link"/>
+    <child link="arm_mount"/>
+    <origin xyz="0.1 0 0.02" rpy="0 0 0"/>
+  </joint>
+  
+</robot>

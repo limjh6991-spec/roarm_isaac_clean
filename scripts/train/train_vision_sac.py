@@ -87,8 +87,8 @@ def train_sac(total_timesteps=50000):
     )
     print("✅ Policy configured with NatureCNN (512 features)")
     
-    # SAC model
-    print("\n3. Creating SAC model...")
+    # SAC model with improved exploration settings (v2.0)
+    print("\n3. Creating SAC model (v2.0 - Enhanced Exploration)...")
     model = SAC(
         "CnnPolicy",
         train_env,
@@ -100,15 +100,19 @@ def train_sac(total_timesteps=50000):
         gamma=0.99,  # Discount factor
         train_freq=1,  # Train every step
         gradient_steps=1,  # 1 gradient step per env step
-        learning_starts=10_000,  # Start training after 10K steps
+        learning_starts=5_000,  # Start training after 5K steps (was 10K)
+        ent_coef=0.2,  # Higher entropy for exploration (was "auto")
+        target_entropy="auto",  # Let SAC find optimal target
         tensorboard_log=str(output_dir / "tensorboard"),
         verbose=1,
         device="cuda",  # Use GPU
     )
-    print("✅ SAC model created")
+    print("✅ SAC model created (v2.0 Enhanced)")
     print(f"   Buffer size: 100K")
     print(f"   Batch size: 256")
     print(f"   Learning rate: 3e-4")
+    print(f"   Entropy coef: 0.2 (high exploration)")
+    print(f"   Learning starts: 5K steps")
     print(f"   Device: cuda")
     
     # Callbacks

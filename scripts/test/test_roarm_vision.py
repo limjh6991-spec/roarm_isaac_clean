@@ -9,7 +9,8 @@ import numpy as np
 from pathlib import Path
 
 # AppLauncher must be first
-from isaaclab.app import AppLauncher
+# TODO_5.1: Isaac Lab not available in 5.1, consider using native API
+# from omni.isaac.lab.app import AppLauncher
 
 parser = argparse.ArgumentParser(description="Test RoArm Vision Environment")
 parser.add_argument("--obs_mode", type=str, default="vision", choices=["vector", "vision"],

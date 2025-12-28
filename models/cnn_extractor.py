@@ -8,7 +8,7 @@ Architecture: NatureCNN (Atari-style)
 - Conv3: 64 filters (3×3, stride 1)
 - Flatten + Linear(512)
 
-Input: (4, 84, 84) - RGBD
+Input: (3, 84, 84) - RGB or (4, 84, 84) - RGBD
 Output: (512,) - Feature vector
 
 작성일: 2025-11-02

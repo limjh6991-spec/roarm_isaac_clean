@@ -31,7 +31,8 @@ from pathlib import Path
 # Note: omni.usd, pxr는 런타임에 import됨 (IsaacLab 환경에서만 사용 가능)
 
 # AppLauncher는 다른 import보다 먼저 실행되어야 함
-from isaaclab.app import AppLauncher
+# TODO_5.1: Isaac Lab not available in 5.1, consider using native API
+# from omni.isaac.lab.app import AppLauncher
 
 # Argument parser
 parser = argparse.ArgumentParser(
@@ -52,12 +53,17 @@ import numpy as np
 from PIL import Image
 from datetime import datetime
 
-import isaaclab.sim as sim_utils
-from isaaclab.assets import Articulation, ArticulationCfg
-from isaaclab.actuators import ImplicitActuatorCfg
-from isaaclab.sim import SimulationCfg, SimulationContext
-from isaaclab.sim.converters import UrdfConverter, UrdfConverterCfg
-from isaaclab.sensors import Camera, CameraCfg
+import omni.isaac.lab.sim as sim_utils
+# TODO_5.1: Isaac Lab not available in 5.1, consider using native API
+# from omni.isaac.lab.assets import Articulation, ArticulationCfg
+# TODO_5.1: Isaac Lab not available in 5.1, consider using native API
+# from omni.isaac.lab.actuators import ImplicitActuatorCfg
+# TODO_5.1: Isaac Lab not available in 5.1, consider using native API
+# from omni.isaac.lab.sim import SimulationCfg, SimulationContext
+# TODO_5.1: Isaac Lab not available in 5.1, consider using native API
+# from omni.isaac.lab.sim.converters import UrdfConverter, UrdfConverterCfg
+# TODO_5.1: Isaac Lab not available in 5.1, consider using native API
+# from omni.isaac.lab.sensors import Camera, CameraCfg
 
 # ==============================================================================
 # Configuration
