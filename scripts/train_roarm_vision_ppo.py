@@ -22,7 +22,7 @@ parser.add_argument("--num_envs", type=int, default=4, help="Number of parallel 
 parser.add_argument("--max_iterations", type=int, default=1000, help="Max training iterations")
 parser.add_argument("--seed", type=int, default=42, help="Random seed")
 parser.add_argument("--checkpoint", type=str, default=None, help="Resume from checkpoint")
-parser.add_argument("--log_dir", type=str, default="logs/roarm_vision_ppo", help="Log directory")
+parser.add_argument("--log_dir", type=str, default="/tmp/roarm_vision_ppo", help="Log directory")
 
 AppLauncher.add_app_launcher_args(parser)
 args_cli = parser.parse_args()
@@ -48,7 +48,7 @@ from isaaclab.envs import DirectRLEnv, DirectRLEnvCfg
 from isaaclab.scene import InteractiveSceneCfg
 from isaaclab.sim import SimulationCfg
 from isaaclab.sim.spawners.from_files import GroundPlaneCfg, spawn_ground_plane
-from isaaclab.sensors import Camera, CameraCfg
+from isaaclab.sensors import TiledCamera, TiledCameraCfg
 from isaaclab.actuators import ImplicitActuatorCfg
 from isaaclab.utils import configclass
 
@@ -81,7 +81,7 @@ class RoArmVisionEnvCfg(DirectRLEnvCfg):
     episode_length_s = 10.0
     action_scale = 0.5
     action_space = 7
-    observation_space = 4 * 84 * 84  # RGBD
+    observation_space = [84, 84, 3]  # RGB image shape for TiledCamera
     state_space = 0
     
     sim: SimulationCfg = SimulationCfg(dt=1/60, render_interval=2)
@@ -132,17 +132,18 @@ class RoArmVisionRLEnv(DirectRLEnv):
         )
         cube_cfg.func("/World/Cube", cube_cfg, translation=(0.3, 0.0, 0.45))
         
-        # Camera
-        camera_cfg = CameraCfg(
-            prim_path="/World/envs/env_.*/Robot/gripper_link/camera",
-            update_period=0.0, height=84, width=84,
-            data_types=["rgb", "distance_to_image_plane"],
+        # Camera (TiledCamera for headless rendering)
+        camera_cfg = TiledCameraCfg(
+            prim_path="/World/envs/env_.*/Camera",
+            offset=TiledCameraCfg.OffsetCfg(pos=(0.5, 0.0, 0.8), rot=(0.9239, 0.0, 0.3827, 0.0), convention="world"),
+            data_types=["rgb"],
             spawn=sim_utils.PinholeCameraCfg(
-                focal_length=2.0, horizontal_aperture=3.0, clipping_range=(0.01, 2.0)
+                focal_length=24.0, focus_distance=400.0, horizontal_aperture=20.955, clipping_range=(0.1, 5.0)
             ),
-            offset=CameraCfg.OffsetCfg(pos=(0.0, 0.0, 0.05), rot=(0.5, -0.5, 0.5, -0.5), convention="ros"),
+            width=84,
+            height=84,
         )
-        self.camera = Camera(camera_cfg)
+        self.camera = TiledCamera(camera_cfg)
         
         self.scene.clone_environments(copy_from_source=False)
         if self.device == "cpu":
@@ -162,12 +163,12 @@ class RoArmVisionRLEnv(DirectRLEnv):
         self.robot.set_joint_position_target(full_actions)
     
     def _get_observations(self):
-        self.camera.update(self.cfg.sim.dt)
-        rgb = self.camera.data.output["rgb"].float() / 255.0
-        depth = torch.clamp(self.camera.data.output["distance_to_image_plane"], 0.01, 2.0)
-        depth_norm = (depth - 0.01) / 1.99
-        rgbd = torch.cat([rgb.permute(0, 3, 1, 2), depth_norm.permute(0, 3, 1, 2)], dim=1)
-        return {"policy": rgbd.flatten(start_dim=1)}
+        # Get RGB from TiledCamera (no update needed)
+        camera_data = self.camera.data.output["rgb"] / 255.0
+        # Normalize for better training
+        mean_tensor = torch.mean(camera_data, dim=(1, 2), keepdim=True)
+        camera_data = camera_data - mean_tensor
+        return {"policy": camera_data}
     
     def _get_rewards(self):
         gripper_pos = self.robot.data.body_pos_w[:, -1]
@@ -234,7 +235,7 @@ def main():
     )
     
     agent = PPO(
-        "CnnPolicy",
+        "MlpPolicy",  # Use MlpPolicy for flattened observations
         env,
         learning_rate=3e-4,
         n_steps=128,
