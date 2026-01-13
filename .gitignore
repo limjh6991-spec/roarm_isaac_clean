@@ -90,3 +90,17 @@ logs/backup/
 # Temporary
 /tmp/
 *.tmp
+
+# Isaac Lab (install separately)
+IsaacLab/
+
+# Temporary logs
+logs/mobile_manipulation/
+logs/sac_training/
+logs/debug/
+logs/pick_place_training/
+
+# Large data files
+data/cube_detection/*.pkl
+data/cube_detection/*.pt
+data/*.pkl

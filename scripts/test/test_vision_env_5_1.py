@@ -56,16 +56,14 @@ def create_test_scene():
     # Robot USD path
     robot_usd = "/home/roarm_m3/roarm_isaac_clean/assets/roarm_m3/usd/roarm_m3_with_camera_correct.usd"
     
-    # Add robot
+    # Add robot (5.1 API: must use add_reference_to_stage first!)
     print("📦 Loading robot...")
-    robot = world.scene.add(
-        SingleArticulation(
-            prim_path="/World/RoArm",
-            name="roarm",
-            usd_path=robot_usd,
-            translation=np.array([0.0, 0.0, 0.0]),
-        )
-    )
+    from isaacsim.core.utils.stage import add_reference_to_stage
+    add_reference_to_stage(usd_path=robot_usd, prim_path="/World/RoArm")
+    
+    # Create SingleArticulation wrapper
+    robot = SingleArticulation(prim_path="/World/RoArm", name="roarm")
+    world.scene.add(robot)
     
     # Add target cube
     print("📦 Adding cube...")
@@ -106,22 +104,23 @@ def create_test_scene():
     return world, robot, cube, camera
 
 
-def test_camera(camera, world, steps=5):
+def test_camera(camera, world, steps=10):
     """Test camera capture"""
     print("\n📷 Testing camera...")
     
     # Initialize camera
     camera.initialize()
     
+    rgb = None
     for i in range(steps):
         world.step(render=True)
         
         # Get RGB
         rgb = camera.get_rgba()
-        if rgb is not None:
+        if rgb is not None and rgb.size > 0:
             print(f"   Step {i}: RGB shape={rgb.shape}, range=[{rgb.min():.2f}, {rgb.max():.2f}]")
         else:
-            print(f"   Step {i}: RGB is None (warming up)")
+            print(f"   Step {i}: RGB is None or empty (warming up)")
     
     return rgb
 
@@ -147,8 +146,8 @@ def test_robot(robot, world, steps=20):
         current = robot.get_joint_positions()
         target = current + delta
         
-        # Apply
-        robot.set_joint_position_targets(target)
+        # Apply (use set_joint_positions for SingleArticulation in 5.1)
+        robot.set_joint_positions(target)
         
         # Step
         world.step(render=True)
