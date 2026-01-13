@@ -104,3 +104,9 @@ logs/pick_place_training/
 data/cube_detection/*.pkl
 data/cube_detection/*.pt
 data/*.pkl
+
+# All zip and log files
+*.zip
+*.log
+logs/
+models/trained/*.pth
